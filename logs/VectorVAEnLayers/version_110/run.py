@@ -90,7 +90,6 @@ print(config['exp_params'], config['logging_params']['save_dir']+config['logging
 runner = Trainer(checkpoint_callback=checkpoint_callback,
                  resume_from_checkpoint=model_path,
                  logger=tt_logger,
-                 log_save_interval=100,
                  # gradient_clip_val=0.5,
                  # train_percent_check=1.,
                  # val_percent_check=1.,
