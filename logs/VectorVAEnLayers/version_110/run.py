@@ -95,7 +95,6 @@ runner = Trainer(checkpoint_callback=checkpoint_callback,
                  # val_percent_check=1.,
                  # num_sanity_val_steps=1,
                  weights_summary='full',
-                 early_stop_callback = False,
                  **config['trainer_params'])
 
 print(f"======= Training {config['model_params']['name']} =======")
