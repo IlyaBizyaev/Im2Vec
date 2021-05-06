@@ -1,35 +1,21 @@
-
-from shutil import copytree, ignore_patterns, rmtree
-import json
-
-import yaml
-import argparse
-import numpy as np
 import os
+from shutil import copytree, ignore_patterns, rmtree
 
-from models import *
-from experiment import VAEXperiment
+import click
+
+import numpy as np
 import torch.backends.cudnn as cudnn
+
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TestTubeLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
-import click
+
+from models import *
+from experiment import VAEXperiment
+from utils import request_and_read_config
 
 
-parser = argparse.ArgumentParser(description='Generic runner for VAE models')
-parser.add_argument('--config',  '-c',
-                    dest="filename",
-                    metavar='FILE',
-                    help='path to the config file',
-                    default='configs/vae.yaml')
-
-args = parser.parse_args()
-
-with open(args.filename, 'r') as file:
-    try:
-        config = yaml.safe_load(file)
-    except yaml.YAMLError as exc:
-        print(exc)
+config = request_and_read_config()
 
 tt_logger = TestTubeLogger(
     save_dir=config['logging_params']['save_dir'],
@@ -60,9 +46,6 @@ def main():
             resume = True
     else:
         copytree(rootdir, model_save_path, ignore=ignore_patterns('*.pyc', 'tmp*', 'logs*', 'data*'))
-
-    with open(model_save_path+'hyperparameters.txt', 'w') as f:
-        json.dump(args.__dict__, f, indent=2)
 
     # For reproducibility
     torch.manual_seed(config['logging_params']['manual_seed'])

@@ -33,25 +33,6 @@ def soft_composite(**kwargs):
     return rgb
 
 
-def soft_composite_W_bg(**kwargs):
-    layers = kwargs['layers']
-    z_layers = kwargs['z_layers']
-    n = len(layers)
-
-    sum_alpha = layers[0][:, 3:4, :, :] * z_layers[0]
-    for i in range(1, n):
-        sum_alpha = sum_alpha + layers[i][:, 3:4, :, :] * z_layers[i]
-    sum_alpha = sum_alpha + 600
-
-    inv_mask = 600 / sum_alpha
-
-    rgb = layers[0][:, :3] * layers[0][:, 3:4, :, :] * z_layers[0] / sum_alpha
-    for i in range(1, n):
-        rgb = rgb + layers[i][:, :3] * layers[i][:, 3:4, :, :] * z_layers[i] / sum_alpha
-    rgb = rgb + inv_mask
-    return rgb
-
-
 class VectorVAEnLayers(VectorVAE):
 
     def __init__(self,
@@ -185,7 +166,7 @@ class VectorVAEnLayers(VectorVAE):
         output = self.decode_and_composite(z, verbose=kwargs['verbose'])
         return output
 
-    def interpolate2D(self, x: torch.Tensor, **kwargs) -> List[torch.Tensor]:
+    def interpolate_2d(self, x: torch.Tensor, **kwargs) -> List[torch.Tensor]:
         mu, log_var = self.encode(x)
         all_interpolations = []
         y_axis = interpolate_vectors(mu[7], mu[6], 10)

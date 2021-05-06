@@ -1,16 +1,23 @@
 import random
 from typing import List
 
-import torch
-from models import BaseVAE, interpolate_vectors
-from torch.nn.functional import binary_cross_entropy_with_logits, mse_loss, tanh, relu, sigmoid
-
-from utils import fig2data, make_tensor
-import pydiffvg
 import numpy as np
-import kornia
+import torch
+from torch.nn.functional import (
+    binary_cross_entropy_with_logits,
+    mse_loss, tanh, relu, sigmoid
+)
+
 import matplotlib.pyplot as plt
 
+import kornia
+import pydiffvg
+
+from models import BaseVAE, interpolate_vectors
+from utils import fig2data, make_tensor
+
+
+OPAQUE_BLACK = (0, 0, 0, 1)
 
 dsample = kornia.transform.PyrDown()
 
@@ -19,12 +26,22 @@ def bilinear_downsample(tensor, size):
     return torch.nn.functional.interpolate(tensor, size, mode='bilinear')
 
 
+def sample_circle(r, angles, sample_rate=10):
+    pos = []
+    for i in range(1, sample_rate + 1):
+        x = (torch.cos(angles * (sample_rate / i)) * r)  # + r
+        y = (torch.sin(angles * (sample_rate / i)) * r)  # + r
+        pos.append(x)
+        pos.append(y)
+    return torch.stack(pos, dim=-1)
+
+
 class VectorVAE(BaseVAE):
 
     def __init__(self,
                  in_channels: int,
                  latent_dim: int,
-                 hidden_dims: List = None,
+                 hidden_dims: List[int] = None,
                  loss_fn: str = 'MSE',
                  imsize: int = 128,
                  paths: int = 4,
@@ -85,7 +102,7 @@ class VectorVAE(BaseVAE):
 
         sample_rate = 1
         angles = torch.arange(0, self.number_of_points, dtype=torch.float32) * 6.28319 / self.number_of_points
-        id = self.sample_circle(self.circle_rad, angles, sample_rate)
+        id = sample_circle(self.circle_rad, angles, sample_rate)
         base_control_features = torch.tensor([[1, 0], [0, 1], [0, 1]], dtype=torch.float32)
         self.id = id[:, :]
         self.angles = angles
@@ -158,7 +175,7 @@ class VectorVAE(BaseVAE):
         self.number_of_points = self.curves * 3
         self.angles = (torch.arange(0, self.number_of_points, dtype=torch.float32) * 6.28319 / self.number_of_points)
 
-        id = self.sample_circle(self.circle_rad, self.angles, 1)
+        id = sample_circle(self.circle_rad, self.angles, 1)
         self.id = id[:, :]
 
     def control_polygon_distance(self, all_points):
@@ -171,15 +188,6 @@ class VectorVAE(BaseVAE):
             c_1 = all_points[:, idx, :]
             loss = loss + distance(c_0, c_1)
         return loss
-
-    def sample_circle(self, r, angles, sample_rate=10):
-        pos = []
-        for i in range(1, sample_rate + 1):
-            x = (torch.cos(angles * (sample_rate / i)) * r)  # + r
-            y = (torch.sin(angles * (sample_rate / i)) * r)  # + r
-            pos.append(x)
-            pos.append(y)
-        return torch.stack(pos, dim=-1)
 
     def encode(self, inp: torch.Tensor) -> List[torch.Tensor]:
         """
@@ -198,7 +206,7 @@ class VectorVAE(BaseVAE):
 
         return [mu, log_var]
 
-    def raster(self, all_points, color=[0, 0, 0, 1], verbose=False, white_background=True):
+    def raster(self, all_points, color=OPAQUE_BLACK, verbose=False, white_background=True):
         assert len(color) == 4
         # print('1:', process.memory_info().rss*1e-6)
         render_size = self.imsize
@@ -221,7 +229,7 @@ class VectorVAE(BaseVAE):
                 colors = np.random.rand(self.curves, 4)
                 high = np.array((0.565, 0.392, 0.173, 1))
                 low = np.array((0.094, 0.310, 0.635, 1))
-                diff = (high - low) / (self.curves)
+                diff = (high - low) / self.curves
                 colors[:, 3] = 1
                 for i in range(self.curves):
                     scale = diff * i
@@ -473,7 +481,6 @@ class VectorVAE(BaseVAE):
         #     angles = torch.atan(all_points[:,:,1]/all_points[:,:,0]).detach()
         #     self.sort_idx = torch.argsort(angles, dim=1)
         # Process the batch sequentially
-        outputs = []
         for k in range(1):
             # Get point parameters from network
             shapes = []
@@ -505,7 +512,7 @@ class VectorVAE(BaseVAE):
             all_interpolations.append(self.raster(all_points, verbose=kwargs['verbose']))
         return all_interpolations
 
-    def interpolate2D(self, x: torch.Tensor, **kwargs) -> List[torch.Tensor]:
+    def interpolate_2d(self, x: torch.Tensor, **kwargs) -> List[torch.Tensor]:
         mu, log_var = self.encode(x)
         all_interpolations = []
         y_axis = interpolate_vectors(mu[7], mu[6], 10)

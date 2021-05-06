@@ -1,14 +1,19 @@
+import argparse
 import glob
+import math
 import os
 
+import numpy as np
 import torch
-import math
+from torchvision.utils import save_image
+
 import svgpathtools
 import pydiffvg
-import argparse
-import numpy as np
-from torchvision.utils import save_image
+
 from utils import hard_composite as hard_composite_
+
+
+OPAQUE_BLACK = (0, 0, 0, 1)
 
 
 def make_tensor(x, grad=False):
@@ -29,7 +34,7 @@ def hard_composite(**kwargs):
     return rgb
 
 
-def raster(all_points, color=[0, 0, 0, 1], verbose=False, white_background=True):
+def raster(all_points, color=OPAQUE_BLACK, verbose=False, white_background=True):
     assert len(color) == 4
     # print('1:', process.memory_info().rss*1e-6)
     render_size = 512
@@ -97,7 +102,6 @@ def raster(all_points, color=[0, 0, 0, 1], verbose=False, white_background=True)
                 shape_groups.append(group)
 
         else:
-
             path = pydiffvg.Path(
                 num_control_points=num_ctrl_pts, points=points,
                 is_closed=True)
@@ -131,7 +135,7 @@ def raster(all_points, color=[0, 0, 0, 1], verbose=False, white_background=True)
 
 
 def from_svg_path(path_str, shape_to_canvas=torch.eye(3), force_close=False, verbose=True):
-    colors = [[0, 0, 0, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], ]
+    colors = [[0, 0, 0, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]
     paths, attributes = svgpathtools.svg2paths(path_str)
     ret_paths = []
     paths = paths

@@ -1,7 +1,9 @@
-import torch
-from models import BaseVAE, interpolate_vectors
-from torch.nn.functional import binary_cross_entropy, mse_loss
 from typing import List
+
+import torch
+from torch.nn.functional import binary_cross_entropy, mse_loss
+
+from models import BaseVAE, interpolate_vectors
 
 
 def reparameterize(mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
