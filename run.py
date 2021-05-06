@@ -11,7 +11,7 @@ from pytorch_lightning.loggers import TestTubeLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from models import *
-from experiment import VAEXperiment
+from experiment import VAEExperiment
 from utils import request_and_read_config
 
 
@@ -25,9 +25,11 @@ tt_logger = TestTubeLogger(
     version=config['logging_params']['version'],
 )
 
+IGNORE_PATTERNS = ignore_patterns('*.pyc', '*.md', 'tmp*', 'logs*', 'data*')
+
 
 def main():
-    rootdir = os.getcwd()
+    root_dir = os.getcwd()
     resume = False
     model_save_path = '{}/{}/version_{}/'.format(
         config['logging_params']['save_dir'],
@@ -38,27 +40,27 @@ def main():
     # Copying the folder
     if os.path.exists(model_save_path):
         if config['model_params']['only_auxiliary_training'] or config['model_params']['memory_leak_training']:
-            print('Training Auxillary Network or Memory Leak')
-        elif click.confirm('Folder exists do you want to override?', default=True):
+            print('Training Auxiliary Network or Memory Leak')
+        elif click.confirm('Folder exists, override?', default=True):
             rmtree(model_save_path)
-            copytree(rootdir, model_save_path, ignore=ignore_patterns('*.pyc', 'tmp*', 'logs*', 'data*'))
+            copytree(root_dir, model_save_path, ignore=IGNORE_PATTERNS)
         else:
             resume = True
     else:
-        copytree(rootdir, model_save_path, ignore=ignore_patterns('*.pyc', 'tmp*', 'logs*', 'data*'))
+        copytree(root_dir, model_save_path, ignore=IGNORE_PATTERNS)
 
     # For reproducibility
     torch.manual_seed(config['logging_params']['manual_seed'])
     np.random.seed(config['logging_params']['manual_seed'])
     cudnn.deterministic = True
     cudnn.benchmark = False
+
     print(config['model_params'])
     model = vae_models[config['model_params']['name']](
         imsize=config['exp_params']['img_size'],
         **config['model_params']
     )
-    experiment = VAEXperiment(model,
-                              config['exp_params'])
+    experiment = VAEExperiment(model, config['exp_params'])
 
     model_path = None
     if config['model_params']['only_auxiliary_training'] or config['model_params']['memory_leak_training'] or resume:
@@ -71,13 +73,12 @@ def main():
                 checkpoint = torch.load(model_path)
                 experiment.load_state_dict(checkpoint['state_dict'])
                 model_path = None
-        # experiment = VAEXperiment.load_from_checkpoint(model_path, vae_model = model, params=config['exp_params'])
+        # experiment = VAEExperiment.load_from_checkpoint(model_path, vae_model = model, params=config['exp_params'])
 
-    checkpoint_callback = ModelCheckpoint(model_save_path,
-                                          verbose=True, save_last=True)
-                                          # monitor='loss',
-                                          # mode='min',)
-                                          # save_top_k=5,)
+    checkpoint_callback = ModelCheckpoint(model_save_path, verbose=True, save_last=True)
+    # monitor='loss',
+    # mode='min',
+    # save_top_k=5,)
 
     print(config['exp_params'], config['logging_params']['save_dir']+config['logging_params']['name'])
     runner = Trainer(callbacks=[checkpoint_callback],

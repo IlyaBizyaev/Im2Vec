@@ -7,7 +7,7 @@ import torch.backends.cudnn as cudnn
 from pytorch_lightning.loggers import TestTubeLogger
 
 from models import *
-from experiment import VAEXperiment
+from experiment import VAEExperiment
 
 from utils import request_and_read_config
 
@@ -47,7 +47,7 @@ def main():
         print('loading: ', model_path)
     else:
         model_path = '{}/{}'.format(model_save_path, config['logging_params']['resume'])
-    experiment = VAEXperiment.load_from_checkpoint(model_path, vae_model=model, params=config['exp_params'])
+    experiment = VAEExperiment.load_from_checkpoint(model_path, vae_model=model, params=config['exp_params'])
     experiment.eval()
     experiment.freeze()
     experiment.sample_interpolate(

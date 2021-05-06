@@ -272,7 +272,6 @@ class VectorVAE(BaseVAE):
                 #     shape_groups.append(group)
 
             else:
-
                 path = pydiffvg.Path(
                     num_control_points=num_ctrl_pts, points=points,
                     is_closed=True)
@@ -283,6 +282,7 @@ class VectorVAE(BaseVAE):
                     fill_color=color,
                     stroke_color=color)
                 shape_groups.append(path_group)
+
             scene_args = pydiffvg.RenderFunction.serialize_scene(render_size, render_size, shapes, shape_groups)
             out = render(render_size,  # width
                          render_size,  # height

@@ -4,7 +4,7 @@ import numpy as np
 
 import torch.backends.cudnn as cudnn
 
-from experiment import VAEXperiment
+from experiment import VAEExperiment
 from models import *
 from utils import request_and_read_config
 
@@ -29,7 +29,7 @@ def main():
         imsize=config['exp_params']['img_size'],
         **config['model_params']
     )
-    experiment = VAEXperiment(model, config['exp_params'])
+    experiment = VAEExperiment(model, config['exp_params'])
 
     weights = [x for x in os.listdir(model_save_path) if '.ckpt' in x]
     weights.sort(key=lambda x: os.path.getmtime(x))
