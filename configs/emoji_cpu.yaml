@@ -26,7 +26,6 @@ exp_params:
   grow: True
 
 trainer_params:
-  gpus: 1
   max_epochs: 2500
 
 logging_params:

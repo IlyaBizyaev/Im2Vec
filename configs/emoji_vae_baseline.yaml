@@ -8,7 +8,7 @@ model_params:
   radius: 50
   scale_factor: 1
   learn_sampling: False
-  only_auxillary_training: False
+  only_auxiliary_training: False
   memory_leak_training: False
 
 exp_params:

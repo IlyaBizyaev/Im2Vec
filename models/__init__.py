@@ -8,6 +8,6 @@ from .vector_vae_nlayers import VectorVAEnLayers
 VAE = VanillaVAE
 
 
-vae_models = {'VanillaVAE':VanillaVAE,
-              'VectorVAE':VectorVAE,
+vae_models = {'VanillaVAE': VanillaVAE,
+              'VectorVAE': VectorVAE,
               'VectorVAEnLayers': VectorVAEnLayers}

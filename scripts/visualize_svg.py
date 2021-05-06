@@ -7,24 +7,15 @@ import svgpathtools
 import pydiffvg
 import argparse
 import numpy as np
-import torchvision.utils as vutils
+from torchvision.utils import save_image
+from utils import hard_composite as hard_composite_
 
-render = pydiffvg.RenderFunction.apply
+
 def make_tensor(x, grad=False):
     x = torch.tensor(x, dtype=torch.float32)
     x.requires_grad = grad
     return x
 
-def hard_composite_(**kwargs):
-    layers = kwargs['layers']
-    n = len(layers)
-    alpha = (1 - layers[n - 1][:, 3:4, :, :])
-    rgb = layers[n - 1][:, :3] * layers[n - 1][:, 3:4, :, :]
-    for i in reversed(range(n-1)):
-        rgb = rgb + layers[i][:, :3] * layers[i][:, 3:4, :, :] * alpha
-        alpha = (1-layers[i][:, 3:4, :, :]) * alpha
-    rgb = rgb + alpha
-    return rgb
 
 def hard_composite(**kwargs):
     layers = kwargs['layers']
@@ -33,20 +24,21 @@ def hard_composite(**kwargs):
     rgb = layers[0][:, :3] * layers[0][:, 3:4, :, :]
     for i in range(1, n):
         rgb = rgb + layers[i][:, :3] * layers[i][:, 3:4, :, :] * alpha
-        alpha = (1-layers[i][:, 3:4, :, :]) * alpha
+        alpha = (1 - layers[i][:, 3:4, :, :]) * alpha
     rgb = rgb + alpha
     return rgb
+
 
 def raster(all_points, color=[0, 0, 0, 1], verbose=False, white_background=True):
     assert len(color) == 4
     # print('1:', process.memory_info().rss*1e-6)
     render_size = 512
-    paths = int(all_points.shape[0]/3)
-    bs = 1#all_points.shape[0]
+    paths = int(all_points.shape[0] / 3)
+    bs = 1  # all_points.shape[0]
     outputs = []
-    scaling =  torch.zeros([1,2])
-    scaling[:, 0] = 512/24
-    scaling[:, 1] = 512/24
+    scaling = torch.zeros([1, 2])
+    scaling[:, 0] = 512 / 24
+    scaling[:, 1] = 512 / 24
     print(scaling)
     all_points = all_points * scaling
     num_ctrl_pts = torch.zeros(paths, dtype=torch.int32) + 2
@@ -62,7 +54,7 @@ def raster(all_points, color=[0, 0, 0, 1], verbose=False, white_background=True)
             colors = np.random.rand(paths, 4)
             high = np.array((0.565, 0.392, 0.173, 1))
             low = np.array((0.094, 0.310, 0.635, 1))
-            diff = (high - low) / (paths)
+            diff = (high - low) / paths
             colors[:, 3] = 1
             for i in range(paths):
                 scale = diff * i
@@ -117,13 +109,14 @@ def raster(all_points, color=[0, 0, 0, 1], verbose=False, white_background=True)
                 stroke_color=color)
             shape_groups.append(path_group)
         scene_args = pydiffvg.RenderFunction.serialize_scene(render_size, render_size, shapes, shape_groups)
+        render = pydiffvg.RenderFunction.apply
         out = render(render_size,  # width
-                          render_size,  # height
-                          2,  # num_samples_x
-                          2,  # num_samples_y
-                          102,  # seed
-                          None,
-                          *scene_args)
+                     render_size,  # height
+                     2,  # num_samples_x
+                     2,  # num_samples_y
+                     102,  # seed
+                     None,
+                     *scene_args)
         out = out.permute(2, 0, 1).view(4, render_size, render_size)  # [:3]#.mean(0, keepdim=True)
         outputs.append(out)
     output = torch.stack(outputs).to(all_points.device)
@@ -137,7 +130,7 @@ def raster(all_points, color=[0, 0, 0, 1], verbose=False, white_background=True)
     return output
 
 
-def from_svg_path(path_str, shape_to_canvas = torch.eye(3), force_close = False, verbose = True):
+def from_svg_path(path_str, shape_to_canvas=torch.eye(3), force_close=False, verbose=True):
     colors = [[0, 0, 0, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], ]
     paths, attributes = svgpathtools.svg2paths(path_str)
     ret_paths = []
@@ -146,25 +139,25 @@ def from_svg_path(path_str, shape_to_canvas = torch.eye(3), force_close = False,
         subpaths = path.continuous_subpaths()
         for idx, subpath in enumerate(subpaths):
             # print(subpath)
-            if len(subpath)==0:
+            if len(subpath) == 0:
                 continue
             if subpath.isclosed():
                 if len(subpath) > 1 and isinstance(subpath[-1], svgpathtools.Line) and subpath[-1].length() < 1e-5:
                     subpath.remove(subpath[-1])
-                    subpath[-1].end = subpath[0].start # Force closing the path
+                    subpath[-1].end = subpath[0].start  # Force closing the path
                     subpath.end = subpath[-1].end
-                    assert(subpath.isclosed())
+                    assert (subpath.isclosed())
             else:
                 beg = subpath[0].start
                 end = subpath[-1].end
                 if abs(end - beg) < 1e-5:
-                    subpath[-1].end = beg # Force closing the path
+                    subpath[-1].end = beg  # Force closing the path
                     subpath.end = subpath[-1].end
-                    assert(subpath.isclosed())
+                    assert (subpath.isclosed())
                 elif force_close:
                     subpath.append(svgpathtools.Line(end, beg))
                     subpath.end = subpath[-1].end
-                    assert(subpath.isclosed())
+                    assert (subpath.isclosed())
 
             num_control_points = []
             points = []
@@ -173,8 +166,8 @@ def from_svg_path(path_str, shape_to_canvas = torch.eye(3), force_close = False,
                     points.append((e.start.real, e.start.imag))
                 else:
                     # Must begin from the end of previous segment
-                    assert(e.start.real == points[-1][0])
-                    assert(e.start.imag == points[-1][1])
+                    assert (e.start.real == points[-1][0])
+                    assert (e.start.imag == points[-1][1])
                 if isinstance(e, svgpathtools.Line):
                     # num_control_points.append(0)
                     num_control_points.append(2)
@@ -199,8 +192,7 @@ def from_svg_path(path_str, shape_to_canvas = torch.eye(3), force_close = False,
                         sign = -1.0
 
                     epsilon = 0.00001
-                    debug = abs(e.delta) >= 90.0
-                    while (sign * (stop - start) > epsilon):
+                    while sign * (stop - start) > epsilon:
                         arc_to_draw = stop - start
                         if arc_to_draw > 0.0:
                             arc_to_draw = min(arc_to_draw, 0.5 * math.pi)
@@ -238,18 +230,18 @@ def from_svg_path(path_str, shape_to_canvas = torch.eye(3), force_close = False,
                             points.append((cx + rx * math.cos(rot + start + arc_to_draw),
                                            cy + ry * math.sin(rot + start + arc_to_draw)))
                         start += arc_to_draw
-                        first = False
                 if i != len(subpath) - 1:
                     points.append((e.end.real, e.end.imag))
                 else:
                     if subpath.isclosed():
                         # Must end at the beginning of first segment
-                        assert(e.end.real == points[0][0])
-                        assert(e.end.imag == points[0][1])
+                        assert (e.end.real == points[0][0])
+                        assert (e.end.imag == points[0][1])
                     else:
                         points.append((e.end.real, e.end.imag))
             points = torch.tensor(points)
-            points = torch.cat((points, torch.ones([points.shape[0], 1])), dim = 1) @ torch.transpose(shape_to_canvas, 0, 1)
+            points = torch.cat((points, torch.ones([points.shape[0], 1])), dim=1)\
+                @ torch.transpose(shape_to_canvas, 0, 1)
             points = points / points[:, 2:3]
             points = points[:, :2].contiguous()
             if verbose:
@@ -257,28 +249,32 @@ def from_svg_path(path_str, shape_to_canvas = torch.eye(3), force_close = False,
             else:
                 # if i==0:
                 #     continue
-                if i>len(colors)-1:
+                if i > len(colors) - 1:
                     i = -1
                 print(i)
                 ret_paths.append(raster(points, colors[idx], verbose=False))
     return ret_paths
 
-if __name__ == "__main__":
+
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--svg", help="source SVG path")
     args = parser.parse_args()
     svg_folder = os.path.join(args.svg)
-    svgs = glob.glob(svg_folder+'/*.svg')
+    svgs = glob.glob(svg_folder + '/*.svg')
     renders = []
     for file in range(len(svgs)):
-        name = svg_folder+f'/{file}.svg'
+        name = svg_folder + f'/{file}.svg'
         print(name)
-        layers = from_svg_path(name, verbose = False)
+        layers = from_svg_path(name, verbose=False)
         composite = hard_composite_(layers=layers)
         renders.append(composite)
     render = torch.cat(renders, dim=0)
-    vutils.save_image(render.cpu().data,
-                      svg_folder+
-                      f"/img.png",
-                      normalize=False,
-                      nrow=10)
+    save_image(render.cpu().data,
+               svg_folder + f"/img.png",
+               normalize=False,
+               nrow=10)
+
+
+if __name__ == "__main__":
+    main()

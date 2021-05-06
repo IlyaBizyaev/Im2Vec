@@ -3,3 +3,10 @@ kornia
 torch_optimizer
 test_tube
 click
+torch
+numpy
+torchvision
+matplotlib
+PyYAML
+svgpathtools
+Pillow
