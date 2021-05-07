@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torch.nn.functional import (
     binary_cross_entropy_with_logits,
-    mse_loss, tanh, relu, sigmoid
+    mse_loss, tanh, relu
 )
 
 import matplotlib.pyplot as plt
@@ -341,7 +341,7 @@ class VectorVAE(BaseVAE):
             all_points = relu(all_points)
             # all_points = torch.cat([z_base_transform, all_points], dim=1)
             all_points = compute_block(all_points)
-        all_points = self.decode_transform(sigmoid(all_points / self.scale_factor))
+        all_points = self.decode_transform(torch.sigmoid(all_points / self.scale_factor))
         return all_points
 
     def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
