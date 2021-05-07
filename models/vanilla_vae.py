@@ -19,7 +19,6 @@ class VanillaVAE(BaseVAE):
         print('Beta:', beta, ' loss_fn: ', loss_fn)
         self.beta = beta
         self.scale_factor = kwargs['scale_factor']
-        self.learn_sampling = kwargs['learn_sampling']
         self.only_auxiliary_training = kwargs['only_auxiliary_training']
         self.memory_leak_training = kwargs['memory_leak_training']
         self.other_losses_weight = 0
@@ -83,18 +82,6 @@ class VanillaVAE(BaseVAE):
                     torch.nn.LeakyReLU()
                 )
             )
-            # modules.append(
-            #     nn.Sequential(
-            #         nn.ConvTranspose2d(hidden_dims[i+1],
-            #                            hidden_dims[i+1],
-            #                            kernel_size=3,
-            #                            stride = 2,
-            #                            padding=1,
-            #                            output_padding=1),
-            #         # nn.BatchNorm2d(hidden_dims[i + 1]),
-            #         nn.LeakyReLU())
-            # )
-            #
 
         self.decoder = torch.nn.Sequential(*modules)
 

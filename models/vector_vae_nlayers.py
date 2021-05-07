@@ -65,18 +65,20 @@ class VectorVAEnLayers(VectorVAE):
             else:
                 return torch.nn.Linear(in_channels, out_channels)
 
-        # self.colors = [[0, 0, 0, 1], [255/255, 0/255, 0/255, 1],]
-        # self.colors = [[0, 0, 0, 1], [255/255, 0/255, 255/255, 1], [0/255, 255/255, 255/255, 1],]
-        # self.colors = [[0, 0, 0, 1], [255/255, 165/255, 0/255, 1], [0/255, 0/255, 255/255, 1],]
-
-        self.colors = [[252 / 255, 194 / 255, 27 / 255, 1], [255 / 255, 0 / 255, 0 / 255, 1],
-                       [0 / 255, 255 / 255, 0 / 255, 1], [0 / 255, 0 / 255, 255 / 255, 1], ]
+        # TODO: this hardcodes colors for the emoji dataset!!
+        self.colors = [
+            [252/255, 194/255, 27/255, 1.0],  # emoji yellow...
+            [1.0, 0, 0, 1.0],  # red
+            [0, 1.0, 0, 1.0],  # green
+            [0, 0, 1.0, 1.0],  # blue
+        ]
 
         self.rnn = torch.nn.LSTM(latent_dim, latent_dim, 2, bidirectional=True)
         self.composite_fn = hard_composite
         if kwargs['composite_fn'] == 'soft':
             print('Using Differential Compositing')
             self.composite_fn = soft_composite
+        # TODO: this is literally just ReLU
         self.divide_shape = torch.nn.Sequential(
             torch.nn.ReLU(),  # bound spatial extent
             # get_computational_unit(latent_dim, latent_dim, 'mlp'),
@@ -115,23 +117,20 @@ class VectorVAEnLayers(VectorVAE):
         outputs = outputs.permute(1, 0, 2)  # [batch size, len, emb dim]
         outputs = outputs[:, :, :self.latent_dim] + outputs[:, :, self.latent_dim:]
         z_layers = []
+        # TODO: the number of layers is equal to the number of hardcoded colors above!
         for i in range(n):
             shape_output = self.divide_shape(outputs[:, i, :])
             shape_latent = self.final_shape_latent(shape_output)
-            all_points = self.decode(shape_latent)  # , point_predictor=self.point_predictor[i])
-            # print(torch.isfinite(all_points).all())
-            # import pdb; pdb.set_trace()
+            all_points = self.decode(shape_latent)
             layer = self.raster(all_points, self.colors[i], verbose=kwargs['verbose'], white_background=False)
             z_pred = self.z_order(shape_output)
             layers.append(layer)
             z_layers.append(torch.exp(z_pred[:, :, None, None]))
             if return_overlap_loss:
-                loss = loss + self.control_polygon_distance(all_points)
+                loss += self.control_polygon_distance(all_points)
 
         output = self.composite_fn(layers=layers, z_layers=z_layers)
         if return_overlap_loss:
-            #     overlap_alpha = layers[1][:, 3:4, :, :] + layers[2][:, 3:4, :, :]
-            #     loss = F.relu(overlap_alpha - 1).mean()
             return output, loss
         return output
 
@@ -144,7 +143,7 @@ class VectorVAEnLayers(VectorVAE):
         mu, log_var = self.encode(x)
         z = self.reparameterize(mu, log_var)
         output = self.decode_and_composite(z, verbose=random.choice([True, False]))
-        return output  # [:, :3]
+        return output
 
     def interpolate(self, x: torch.Tensor, **kwargs) -> List[torch.Tensor]:
         mu, log_var = self.encode(x)
@@ -193,16 +192,6 @@ class VectorVAEnLayers(VectorVAE):
                 all_points_interpolate = interpolate_vectors(all_points[2], all_points[j], 10)
                 layer = self.raster(all_points_interpolate, self.colors[i], verbose=kwargs['verbose'])
                 layers.append(layer)
-            # output = (layers[0][:, :3] * layers[0][:, 3:4, :, :] * (1 - layers[1][:, 3:4, :, :]) * (
-            #             1 - layers[2][:, 3:4, :, :])) + \
-            #          (layers[1][:, :3] * layers[1][:, 3:4, :, :] * (1 - layers[2][:, 3:4, :, :])) + \
-            #          (layers[2][:, :3] * layers[2][:, 3:4, :, :]) + \
-            #          ((1 - layers[0][:, 3:4, :, :]) * (1 - layers[1][:, 3:4, :, :]) * (1 - layers[2][:, 3:4, :, :]))
-            # output = (layers[0][:, :3] * layers[0][:, 3:4, :, :] * (1 - layers[1][:, 3:4, :, :]) * (
-            #             1 - layers[2][:, 3:4, :, :])) + \
-            #          (layers[1][:, :3] * layers[1][:, 3:4, :, :]) + \
-            #          (layers[2][:, :3] * layers[2][:, 3:4, :, :]) + \
-            #          ((1 - layers[0][:, 3:4, :, :]) * (1 - layers[1][:, 3:4, :, :]) * (1 - layers[2][:, 3:4, :, :]))
 
             output = self.composite_fn(layers=layers)
             all_interpolations.append(output)
@@ -217,9 +206,9 @@ class VectorVAEnLayers(VectorVAE):
             all_interpolations.append(output)
         return all_interpolations
 
+    # TODO: this feels largely duplicated and hardcoded
     def save(self, all_points, save_dir, name, verbose=False, white_background=True):
         # note that this if for a single shape and bs dimension should have multiple curves
-        # print('1:', process.memory_info().rss*1e-6)
         render_size = self.imsize
         bs = all_points.shape[0]
         if verbose:
@@ -231,7 +220,6 @@ class VectorVAEnLayers(VectorVAE):
         shape_groups = []
         for k in range(bs):
             # Get point parameters from network
-            color = make_tensor(color[k])
             points = all_points[k].cpu().contiguous()  # [self.sort_idx[k]]
 
             if verbose:
@@ -266,14 +254,12 @@ class VectorVAEnLayers(VectorVAE):
                     color[3] = 1
                     color = torch.tensor(color)
                     if i % 3 == 0:
-                        # color = torch.tensor(colors[i//3]) #green
                         shape = pydiffvg.Rect(p_min=points[i] - 8,
                                               p_max=points[i] + 8)
                         group = pydiffvg.ShapeGroup(shape_ids=torch.tensor([self.curves + i]),
                                                     fill_color=color)
 
                     else:
-                        # color = torch.tensor(colors[i//3]) #purple
                         shape = pydiffvg.Circle(radius=torch.tensor(8.0),
                                                 center=points[i])
                         group = pydiffvg.ShapeGroup(shape_ids=torch.tensor([self.curves + i]),
@@ -282,7 +268,8 @@ class VectorVAEnLayers(VectorVAE):
                     shape_groups.append(group)
 
             else:
-
+                # TODO: this is clearly copy-pasted and broken
+                color = make_tensor(color[k])
                 path = pydiffvg.Path(
                     num_control_points=num_ctrl_pts, points=points,
                     is_closed=True)

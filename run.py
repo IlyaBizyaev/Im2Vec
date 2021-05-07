@@ -40,7 +40,7 @@ def main():
 
     enable_reproducibility(config)
 
-    print(config['model_params'])
+    print(f"Model params: {config['model_params']}")
     model = VAE_MODELS[config['model_params']['name']](
         imsize=config['exp_params']['img_size'],
         **config['model_params']
@@ -58,28 +58,18 @@ def main():
                 checkpoint = torch.load(model_path)
                 experiment.load_state_dict(checkpoint['state_dict'])
                 model_path = None
-        # experiment = VAEExperiment.load_from_checkpoint(model_path, vae_model = model, params=config['exp_params'])
 
     checkpoint_callback = ModelCheckpoint(model_save_path, verbose=True, save_last=True)
-    # monitor='loss',
-    # mode='min',
-    # save_top_k=5,)
 
     print(config['exp_params'], config['logging_params']['save_dir']+config['logging_params']['name'])
     runner = Trainer(callbacks=[checkpoint_callback],
                      resume_from_checkpoint=model_path,
                      logger=tt_logger,
-                     # gradient_clip_val=0.5,
-                     # train_percent_check=1.,
-                     # val_percent_check=1.,
-                     # num_sanity_val_steps=1,
                      weights_summary='full',
                      **config['trainer_params'])
 
     print(f"======= Training {config['model_params']['name']} =======")
     runner.fit(experiment)
-    # experiment.train_dataloader()
-    # experiment.sample_interpolate()
 
 
 if __name__ == '__main__':

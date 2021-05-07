@@ -39,9 +39,9 @@ class BaseVAE(torch.nn.Module):
         raise NotImplementedError
 
     @abstractmethod
-    def forward(self, *inputs: torch.Tensor) -> torch.Tensor:
+    def forward(self, *inputs: torch.Tensor) -> List[torch.Tensor]:
         pass
 
     @abstractmethod
-    def loss_function(self, *inputs: Any, **kwargs) -> torch.Tensor:
+    def loss_function(self, *inputs: Any, **kwargs) -> dict:
         pass

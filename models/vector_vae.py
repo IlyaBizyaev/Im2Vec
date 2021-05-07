@@ -206,9 +206,8 @@ class VectorVAE(BaseVAE):
 
         return mu, log_var
 
-    def raster(self, all_points, color=OPAQUE_BLACK, verbose=False, white_background=True):
+    def raster(self, all_points, color=OPAQUE_BLACK, verbose=False, white_background=True) -> torch.Tensor:
         assert len(color) == 4
-        # print('1:', process.memory_info().rss*1e-6)
         render_size = self.imsize
         bs = all_points.shape[0]
         if verbose:
@@ -250,27 +249,6 @@ class VectorVAE(BaseVAE):
                         stroke_color=color)
                     shapes.append(path)
                     shape_groups.append(path_group)
-                # for i in range(self.curves * 3):
-                #     scale = diff*(i//3)
-                #     color = low + scale
-                #     color[3] = 1
-                #     color = torch.tensor(color)
-                #     if i%3==0:
-                #         # color = torch.tensor(colors[i//3]) #green
-                #         shape = pydiffvg.Rect(p_min = points[i]-8,
-                #                              p_max = points[i]+8)
-                #         group = pydiffvg.ShapeGroup(shape_ids=torch.tensor([self.curves+i]),
-                #                                            fill_color=color)
-                #
-                #     else:
-                #         # color = torch.tensor(colors[i//3]) #purple
-                #         shape = pydiffvg.Circle(radius=torch.tensor(8.0),
-                #                                  center=points[i])
-                #         group = pydiffvg.ShapeGroup(shape_ids=torch.tensor([self.curves+i]),
-                #                                            fill_color=color)
-                #     shapes.append(shape)
-                #     shape_groups.append(group)
-
             else:
                 path = pydiffvg.Path(
                     num_control_points=num_ctrl_pts, points=points,
@@ -404,7 +382,6 @@ class VectorVAE(BaseVAE):
                             [[self.curves, recon_loss_non_reduced_cpu[i, 0]], ]).to(mu.device)
                 num = torch.ones_like(spacing[:, 0]) * self.curves
                 est_loss = spacing[:, 2] + 1 / torch.exp(num * spacing[:, 0] - spacing[:, 1])
-                # est_loss = spacing[:, 2] + (spacing[i, 0] / num)
 
                 aux_loss = torch.abs(num * (est_loss - recon_loss_non_reduced)).mean() * 10
             else:
@@ -412,9 +389,7 @@ class VectorVAE(BaseVAE):
                 for i in range(num_latents):
                     pair = self.latent_lossvpath[np.array2string(latents[i])]
                     est_loss = spacing[i, 2] + 1 / torch.exp(pair[:, 0] * spacing[i, 0] - spacing[i, 1])
-
-                    # est_loss = spacing[i, 2] + (spacing[i, 0] / pair[:, 0])
-                    aux_loss = aux_loss + torch.abs(pair[:, 0] * (est_loss - pair[:, 1])).mean()
+                    aux_loss += torch.abs(pair[:, 0] * (est_loss - pair[:, 1])).mean()
             loss = aux_loss
             kld_loss = 0  # self.beta*kld_weight * kld_loss
             logs = {'Reconstruction_Loss': recon_loss.mean(), 'KLD': -kld_loss, 'aux_loss': aux_loss}
@@ -456,16 +431,9 @@ class VectorVAE(BaseVAE):
         z = self.reparameterize(mu, log_var)
         return self.raster(self.decode(z), verbose=random.choice([True, False]))
 
-    # .type(torch.FloatTensor).to(device)
-
     def save(self, x, save_dir, name):
         z, log_var = self.encode(x)
         all_points = self.decode(z)
-        # print(all_points.std(dim=1))
-        # all_points = ((all_points-0.5)*2 + 0.5)*self.imsize
-        # if type(self.sort_idx) == type(None):
-        #     angles = torch.atan(all_points[:,:,1]/all_points[:,:,0]).detach()
-        #     self.sort_idx = torch.argsort(angles, dim=1)
         # Process the batch sequentially
         for k in range(1):
             # Get point parameters from network
@@ -562,10 +530,7 @@ class VectorVAE(BaseVAE):
         for i in np.arange(7, 25):
             spacing = self.aux_network(mu.clone().detach())
             num = torch.ones_like(spacing[:, 0]) * i
-            # est_loss = spacing[:,2] + 1/torch.exp(num*spacing[:,0] + spacing[:,1])
             est_loss = spacing[:, 2] + (spacing[:, 0] / num)
-
-            # print(i, spacing[0])
             all_spacing.append(est_loss)
         all_spacing = torch.stack(all_spacing, dim=1).detach().cpu().numpy()
         y = np.arange(7, 25)

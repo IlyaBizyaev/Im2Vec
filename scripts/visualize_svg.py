@@ -36,7 +36,6 @@ def hard_composite(**kwargs):
 
 def raster(all_points, color=OPAQUE_BLACK, verbose=False, white_background=True):
     assert len(color) == 4
-    # print('1:', process.memory_info().rss*1e-6)
     render_size = 512
     paths = int(all_points.shape[0] / 3)
     bs = 1  # all_points.shape[0]
@@ -142,7 +141,6 @@ def from_svg_path(path_str, shape_to_canvas=torch.eye(3), force_close=False, ver
     for path in paths:
         subpaths = path.continuous_subpaths()
         for idx, subpath in enumerate(subpaths):
-            # print(subpath)
             if len(subpath) == 0:
                 continue
             if subpath.isclosed():

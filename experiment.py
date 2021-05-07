@@ -81,7 +81,7 @@ class VAEExperiment(LightningModule):
 
     def training_epoch_end(self, training_step_outputs):
         super(VAEExperiment, self).training_epoch_end(training_step_outputs)
-        self.sample_images()
+        self.sample_images_()
         if (self.current_epoch + 1) % self.model.memory_leak_epochs == 0 \
                 and self.model.memory_leak_training \
                 and not self.first_epoch:
@@ -101,7 +101,7 @@ class VAEExperiment(LightningModule):
             tensorboard_logs = {'avg_train_loss': avg_loss, 'learning_rate': lr}
             self.log("log", tensorboard_logs)
 
-    def sample_images(self):
+    def sample_images_(self):
         # Get sample reconstruction image
         test_input, test_label = next(iter(self.sample_dataloader))
         test_input = test_input.to(self.cur_device)
@@ -113,13 +113,7 @@ class VAEExperiment(LightningModule):
         save_image(recons.data, f"{prefix}recons_{suffix}", normalize=False, nrow=12)
         save_image(test_input.data, f"{prefix}real_img_{suffix}", normalize=False, nrow=12)
 
-        # try:
-        #     samples = self.model.sample(144, self.cur_device, labels = test_label)
-        #     save_image(samples.cpu().data, f"{prefix}{suffix}", normalize=False, nrow=12)
-        # except:
-        #     pass
-
-        del test_input, recons  # , samples
+        del test_input, recons
 
     def sample_interpolate(self, save_dir, name, version, save_svg=False, other_interpolations=False):
         test_input, test_label = next(iter(self.sample_dataloader))
@@ -174,7 +168,7 @@ class VAEExperiment(LightningModule):
         # Check if more than 1 optimizer is required (Used for adversarial training)
         if 'LR_2' in self.params:
             optimizer2 = AdamP(getattr(self.model, self.params['submodel']).parameters(),
-                                      lr=self.params['LR_2'])
+                               lr=self.params['LR_2'])
             optimizers.append(optimizer2)
 
         scheduler = ReduceLROnPlateau(
@@ -185,7 +179,7 @@ class VAEExperiment(LightningModule):
         )
         schedulers = [{
             'scheduler': scheduler,
-            'monitor': 'val_loss',  # Default: val_loss
+            'monitor': 'val_loss',
             'interval': 'epoch',
             'frequency': 1,
         }]
@@ -196,8 +190,8 @@ class VAEExperiment(LightningModule):
 
         return optimizers, schedulers
 
-    def train_dataloader(self):
-        transform = self.data_transforms()
+    def train_dataloader(self) -> DataLoader:
+        transform = self.data_transforms_()
 
         if self.params['dataset'] == 'celeba':
             dataset = CelebA(root=self.params['data_path'],
@@ -224,8 +218,6 @@ class VAEExperiment(LightningModule):
                                                 drop_last=True, num_workers=1)
             self.num_val_imgs = len(self.sample_dataloader)
 
-            # raise ValueError('Undefined dataset type')
-
         self.num_train_imgs = len(dataset)
         return DataLoader(dataset,
                           batch_size=self.params['batch_size'],
@@ -233,7 +225,7 @@ class VAEExperiment(LightningModule):
                           drop_last=False, num_workers=1)
 
     def val_dataloader(self):
-        transform = self.data_transforms()
+        transform = self.data_transforms_()
 
         if self.params['dataset'] == 'celeba':
             dataset = CelebA(root=self.params['data_path'], split="test", transform=transform, download=False)
@@ -254,22 +246,19 @@ class VAEExperiment(LightningModule):
 
         return sample_dataloader
 
-    def data_transforms(self):
+    def data_transforms_(self):
         set_range = Lambda(lambda x: (2 * x - 1.))
 
         if self.params['dataset'] == 'celeba':
-            transform = Compose([  # transforms.RandomHorizontalFlip(),
+            transform = Compose([
                 CenterCrop(148),
                 Resize(self.params['img_size']),
                 ToTensor(),
                 set_range])
         else:
-            transform = Compose([  # transforms.RandomHorizontalFlip(),
+            transform = Compose([
                 Resize(self.params['img_size']),
-                # transforms.RandomRotation([0, 360], resample=3, fill=(255,255,255)),
-                # transforms.RandomAffine([0, 0], (0.0,0.05), (1.0,1.0), resample=3, fillcolor=(255,255,255)),
                 CenterCrop(self.params['img_size']),
                 ToTensor(),
             ])
-            # raise ValueError('Undefined dataset type')
         return transform

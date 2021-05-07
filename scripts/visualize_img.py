@@ -1,22 +1,17 @@
+import argparse
 import glob
 import os
 
-import torch
-import argparse
-from torchvision.utils import save_image
 from PIL import Image
-from torchvision.transforms import Compose, ToTensor
 
-transform = Compose([  # transforms.RandomHorizontalFlip(),
-    # transforms.RandomRotation([0, 360], resample=3, fill=(255,255,255)),
-    # transforms.RandomAffine([0, 0], (0.0,0.05), (1.0,1.0), resample=3, fillcolor=(255,255,255)),
-    ToTensor(),
-])
+import torch
+from torchvision.utils import save_image
+from torchvision.transforms.functional import to_tensor
 
 
 def load_img(filename):
     x = Image.open(filename).convert('RGB')
-    return transform(x)[None, :, :, :]
+    return to_tensor(x)[None, :, :, :]
 
 
 def main():
