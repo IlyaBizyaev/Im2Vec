@@ -352,8 +352,8 @@ class VectorVAE(BaseVAE):
         :param kwargs:
         :return:
         """
-        recons = args[0][:, :3, :, :]
-        inp, mu, log_var = args[:4]
+        recons, inp, mu, log_var = args[:4]
+        recons = recons[:, :3, :, :]
         other_losses = args[4] if len(args) == 5 else 0
         aux_loss = 0
         kld_loss = 0

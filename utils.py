@@ -8,8 +8,6 @@ import torch.backends.cudnn as cudnn
 
 from pytorch_lightning.loggers import TestTubeLogger
 
-from models import VAE_MODELS
-
 
 def enable_reproducibility(config):
     torch.manual_seed(config['logging_params']['manual_seed'])
@@ -47,13 +45,6 @@ def make_test_tube_logger(config):
         debug=False,
         create_git_tag=False,
         version=config['logging_params']['version'],
-    )
-
-
-def make_model(config):
-    return VAE_MODELS[config['model_params']['name']](
-        img_size=config['exp_params']['img_size'],
-        **config['model_params']
     )
 
 

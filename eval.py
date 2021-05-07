@@ -1,8 +1,8 @@
 from experiment import VAEExperiment
+from models import make_model
 from utils import (
     enable_reproducibility,
     get_last_weight_path,
-    make_model,
     make_test_tube_logger,
     request_and_read_config,
 )

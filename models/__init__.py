@@ -9,3 +9,10 @@ VAE_MODELS = {
     'VectorVAE': VectorVAE,
     'VectorVAEnLayers': VectorVAEnLayers
 }
+
+
+def make_model(config):
+    return VAE_MODELS[config['model_params']['name']](
+        img_size=config['exp_params']['img_size'],
+        **config['model_params']
+    )

@@ -2,7 +2,7 @@ import os
 
 from experiment import VAEExperiment
 from models import *
-from utils import enable_reproducibility, request_and_read_config, make_model, get_last_weight_path
+from utils import enable_reproducibility, request_and_read_config, get_last_weight_path
 
 
 config = request_and_read_config()

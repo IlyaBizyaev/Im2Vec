@@ -6,18 +6,18 @@ import click
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from models import *
 from experiment import VAEExperiment
+from models import *
 from utils import (
     enable_reproducibility,
     get_last_weight_path,
     request_and_read_config,
-    make_model,
     make_test_tube_logger
 )
 
 
 config = request_and_read_config()
+torch.autograd.set_detect_anomaly(True)
 
 IGNORE_PATTERNS = ignore_patterns('*.pyc', '*.md', 'tmp*', 'logs*', 'data*', '.git*')
 
