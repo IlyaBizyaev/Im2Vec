@@ -19,6 +19,7 @@ from ranger import Ranger
 from models import BaseVAE
 
 
+# TODO: get rid of redundant 3rd dataloader
 class VAEExperiment(LightningModule):
 
     def __init__(self, vae_model: BaseVAE, params: dict) -> None:
@@ -207,6 +208,7 @@ class VAEExperiment(LightningModule):
             self.num_val_imgs = 200
         else:
             dataset = ImageFolder(self.params['data_path'], transform=transform)
+
             test_dataset = self.params['data_path'].replace('train', 'test')
             if os.path.exists(test_dataset):
                 test_dataset = ImageFolder(test_dataset, transform=transform)
@@ -229,22 +231,22 @@ class VAEExperiment(LightningModule):
 
         if self.params['dataset'] == 'celeba':
             dataset = CelebA(root=self.params['data_path'], split="test", transform=transform, download=False)
-            sample_dataloader = DataLoader(
+            dataloader = DataLoader(
                 dataset,
                 batch_size=144,
                 shuffle=True,
                 drop_last=True
             )
-            self.num_val_imgs = len(sample_dataloader)
+            self.num_val_imgs = len(dataloader)
         else:
             dataset = ImageFolder(self.params['data_path'], transform=transform)
-            sample_dataloader = DataLoader(dataset,
-                                           batch_size=64,
-                                           shuffle=False,
-                                           drop_last=False)
-            self.num_val_imgs = 200  # len(sample_dataloader)
+            dataloader = DataLoader(dataset,
+                                    batch_size=64,
+                                    shuffle=False,
+                                    drop_last=False)
+            self.num_val_imgs = 200  # len(dataloader)
 
-        return sample_dataloader
+        return dataloader
 
     def data_transforms_(self):
         set_range = Lambda(lambda x: (2 * x - 1.))

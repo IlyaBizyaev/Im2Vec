@@ -1,3 +1,4 @@
+from math import pi
 import random
 from typing import List
 
@@ -18,11 +19,13 @@ from utils import make_tensor
 
 
 OPAQUE_BLACK = (0, 0, 0, 1)
+HIGH = np.array((0.565, 0.392, 0.173, 1))
+LOW = np.array((0.094, 0.310, 0.635, 1))
 
 dsample = kornia.transform.PyrDown()
 
 
-def fig2data(fig):
+def fig2data(fig) -> np.array:
     """
     @brief Convert a Matplotlib figure to a 4D numpy array with RGBA channels and return it
     @param fig a matplotlib figure
@@ -34,11 +37,11 @@ def fig2data(fig):
     return x[:, :, :3]
 
 
-def bilinear_downsample(tensor, size):
+def bilinear_downsample(tensor: torch.Tensor, size: int) -> torch.Tensor:
     return torch.nn.functional.interpolate(tensor, size, mode='bilinear')
 
 
-def sample_circle(r, angles, sample_rate=10):
+def sample_circle(r: int, angles: torch.Tensor, sample_rate: int = 10):
     pos = []
     for i in range(1, sample_rate + 1):
         x = (torch.cos(angles * (sample_rate / i)) * r)  # + r
@@ -46,6 +49,50 @@ def sample_circle(r, angles, sample_rate=10):
         pos.append(x)
         pos.append(y)
     return torch.stack(pos, dim=-1)
+
+
+def decode_transform(x):
+    return x.permute(0, 2, 1)
+
+
+def gaussian_pyramid_loss(recons, inp, loss_fn):
+    recon_loss = loss_fn(recons, inp, reduction='none').mean(dim=[1, 2, 3])
+    for j in range(2, 5):
+        recons = dsample(recons)
+        inp = dsample(inp)
+        recon_loss += loss_fn(recons, inp, reduction='none').mean(dim=[1, 2, 3]) / j
+    return recon_loss
+
+
+def raster_verbose(curves, points) -> ([pydiffvg.Path], [pydiffvg.ShapeGroup]):
+    np.random.seed(0)
+    colors = np.random.rand(curves, 4)
+    colors[:, 3] = 1
+    diff = (HIGH - LOW) / curves
+
+    shapes = []
+    shape_groups = []
+    for i in range(curves):
+        scale = diff * i
+        color = LOW + scale
+        color[3] = 1
+        color = torch.tensor(color)
+        num_ctrl_pts = torch.zeros(1, dtype=torch.int32) + 2
+        if i * 3 + 4 > curves * 3:
+            curve_points = torch.stack([points[i * 3], points[i * 3 + 1], points[i * 3 + 2], points[0]])
+        else:
+            curve_points = points[i * 3:i * 3 + 4]
+        path = pydiffvg.Path(
+            num_control_points=num_ctrl_pts, points=curve_points,
+            is_closed=False, stroke_width=torch.tensor(4))
+        path_group = pydiffvg.ShapeGroup(
+            shape_ids=torch.tensor([i]),
+            fill_color=None,
+            stroke_color=color)
+        shapes.append(path)
+        shape_groups.append(path_group)
+
+    return shapes, shape_groups
 
 
 class VectorVAE(BaseVAE):
@@ -60,36 +107,29 @@ class VectorVAE(BaseVAE):
                  **kwargs) -> None:
         super(VectorVAE, self).__init__()
 
-        self.latent_dim = latent_dim
-        self.img_size = img_size
-        self.beta = kwargs['beta']
-        self.other_losses_weight = 0
-        self.reparameterize_ = False
-        if 'other_losses_weight' in kwargs.keys():
-            self.other_losses_weight = kwargs['other_losses_weight']
-        if 'reparameterize' in kwargs.keys():
-            self.reparameterize_ = kwargs['reparameterize']
+        self.latent_dim_ = latent_dim  # Used by VectorVAEnLayers
+        self.img_size_ = img_size
+        self.should_reparameterize_ = kwargs.get('reparameterize', False)
+        self.other_losses_weight_ = kwargs.get('other_losses_weight', 0)
+        self.curves_ = paths
+        self.scale_factor_ = kwargs['scale_factor']
+        self.learn_sampling_ = kwargs['learn_sampling']
 
-        self.curves = paths
-        self.in_channels = in_channels
-        self.scale_factor = kwargs['scale_factor']
-        self.learn_sampling = kwargs['learn_sampling']
+        self.beta = kwargs['beta']
         self.only_auxiliary_training = kwargs['only_auxiliary_training']
         self.memory_leak_training = kwargs['memory_leak_training']
-
-        self.memory_leak_epochs = 105
-        if 'memory_leak_epochs' in kwargs.keys():
-            self.memory_leak_epochs = kwargs['memory_leak_epochs']
+        self.memory_leak_epochs = kwargs.get('memory_leak_epochs', 105)
 
         if loss_fn == 'BCE':
-            self.loss_fn = binary_cross_entropy_with_logits
+            self.loss_fn_ = binary_cross_entropy_with_logits
         else:
-            self.loss_fn = mse_loss
-        modules = []
+            self.loss_fn_ = mse_loss
+
         if hidden_dims is None:
             hidden_dims = [32, 64, 128, 256, 512]
 
         # Build Encoder
+        modules = []
         for h_dim in hidden_dims:
             modules.append(
                 torch.nn.Sequential(
@@ -104,28 +144,27 @@ class VectorVAE(BaseVAE):
                     torch.nn.ReLU())
             )
             in_channels = h_dim
-        outsize = int(img_size / (2 ** 5))
-        self.fc_mu = torch.nn.Linear(hidden_dims[-1] * outsize * outsize, latent_dim)
-        self.fc_var = torch.nn.Linear(hidden_dims[-1] * outsize * outsize, latent_dim)
-        self.encoder = torch.nn.Sequential(*modules)
+        self.encoder_ = torch.nn.Sequential(*modules)
 
-        self.circle_rad = kwargs['radius']
-        self.number_of_points = self.curves * 3
+        out_size = img_size // (2 ** 5)
+        self.fc_mu_ = torch.nn.Linear(hidden_dims[-1] * out_size * out_size, latent_dim)
+        self.fc_var_ = torch.nn.Linear(hidden_dims[-1] * out_size * out_size, latent_dim)
 
+        self.circle_rad_ = kwargs['radius']
+        self.number_of_points_ = self.curves_ * 3
+
+        angles = torch.arange(0, self.number_of_points_, dtype=torch.float32) * pi * 2 / self.number_of_points_
         sample_rate = 1
-        angles = torch.arange(0, self.number_of_points, dtype=torch.float32) * 6.28319 / self.number_of_points
-        id = sample_circle(self.circle_rad, angles, sample_rate)
+        self.id_circle_ = sample_circle(self.circle_rad_, angles, sample_rate)[:, :]
         base_control_features = torch.tensor([[1, 0], [0, 1], [0, 1]], dtype=torch.float32)
-        self.id = id[:, :]
-        self.angles = angles
         self.register_buffer('base_control_features', base_control_features)
-        self.deformation_range = 6.28319 / 4
+        self.angles_ = angles
 
-        def get_computational_unit(in_channels, out_channels, unit):
-            if unit == 'conv':
+        def get_computational_unit(in_chan, out_chan, unit_type):
+            if unit_type == 'conv':
                 return torch.nn.Conv1d(
-                    in_channels,
-                    out_channels,
+                    in_chan,
+                    out_chan,
                     kernel_size=3,
                     padding=2,
                     padding_mode='circular',
@@ -133,19 +172,16 @@ class VectorVAE(BaseVAE):
                     dilation=1
                 )
             else:
-                return torch.nn.Linear(in_channels, out_channels)
-            # Build Decoder
+                return torch.nn.Linear(in_chan, out_chan)
 
-        unit = 'conv'
-        if unit == 'conv':
-            self.decode_transform = lambda x: x.permute(0, 2, 1)
-        else:
-            self.decode_transform = lambda x: x
+        # Build Decoder
         num_one_hot = base_control_features.shape[1]
         fused_latent_dim = latent_dim + num_one_hot + (sample_rate * 2)
-        self.decoder_input = get_computational_unit(fused_latent_dim, fused_latent_dim * 2, unit)
 
-        self.point_predictor = torch.nn.ModuleList([
+        unit = 'conv'
+        self.decoder_input_ = get_computational_unit(fused_latent_dim, fused_latent_dim * 2, unit)
+
+        self.point_predictor_ = torch.nn.ModuleList([
             get_computational_unit(fused_latent_dim * 2, fused_latent_dim * 2, unit),
             get_computational_unit(fused_latent_dim * 2, fused_latent_dim * 2, unit),
             get_computational_unit(fused_latent_dim * 2, fused_latent_dim * 2, unit),
@@ -153,24 +189,26 @@ class VectorVAE(BaseVAE):
             get_computational_unit(fused_latent_dim * 2, 2, unit),
             # nn.Sigmoid()  # bound spatial extent
         ])
-        if self.learn_sampling:
-            self.sample_deformation = torch.nn.Sequential(
+        if self.learn_sampling_:
+            self.sample_deformation_ = torch.nn.Sequential(
                 get_computational_unit(latent_dim + 2 + (sample_rate * 2), latent_dim * 2, unit),
                 torch.nn.ReLU(),
                 get_computational_unit(latent_dim * 2, latent_dim * 2, unit),
                 torch.nn.ReLU(),
                 get_computational_unit(latent_dim * 2, 1, unit),
             )
-        self.aux_network = torch.nn.Sequential(
-            get_computational_unit(latent_dim, latent_dim * 2, 'mlp'),
+
+        unit = 'mlp'
+        self.aux_network_ = torch.nn.Sequential(
+            get_computational_unit(latent_dim, latent_dim * 2, unit),
             torch.nn.LeakyReLU(),
-            get_computational_unit(latent_dim * 2, latent_dim * 2, 'mlp'),
+            get_computational_unit(latent_dim * 2, latent_dim * 2, unit),
             torch.nn.LeakyReLU(),
-            get_computational_unit(latent_dim * 2, latent_dim * 2, 'mlp'),
+            get_computational_unit(latent_dim * 2, latent_dim * 2, unit),
             torch.nn.LeakyReLU(),
-            get_computational_unit(latent_dim * 2, 3, 'mlp'),
+            get_computational_unit(latent_dim * 2, 3, unit),
         )
-        self.latent_lossvpath = {}
+        self.latent_lossvpath_ = {}
         self.save_lossvspath = False
         if self.only_auxiliary_training:
             self.save_lossvspath = True
@@ -180,26 +218,12 @@ class VectorVAE(BaseVAE):
                     param.requires_grad = True
                 else:
                     param.requires_grad = False
-        # self.lpips = VGGPerceptualLoss(False)
 
     def redo_features(self, n):
-        self.curves = n
-        self.number_of_points = self.curves * 3
-        self.angles = (torch.arange(0, self.number_of_points, dtype=torch.float32) * 6.28319 / self.number_of_points)
-
-        id = sample_circle(self.circle_rad, self.angles, 1)
-        self.id = id[:, :]
-
-    def control_polygon_distance(self, all_points):
-        def distance(vec1, vec2):
-            return ((vec1 - vec2) ** 2).mean()
-
-        loss = 0
-        for idx in range(self.number_of_points):
-            c_0 = all_points[:, idx - 1, :]
-            c_1 = all_points[:, idx, :]
-            loss = loss + distance(c_0, c_1)
-        return loss
+        self.curves_ = n
+        self.number_of_points_ = self.curves_ * 3
+        self.angles_ = (torch.arange(0, self.number_of_points_, dtype=torch.float32) * pi * 2 / self.number_of_points_)
+        self.id_circle_ = sample_circle(self.circle_rad_, self.angles_, sample_rate=1)[:, :]
 
     def encode(self, inp: torch.Tensor) -> (torch.Tensor, torch.Tensor):
         """
@@ -208,70 +232,43 @@ class VectorVAE(BaseVAE):
         :param inp: (Tensor) Input tensor to encoder [N x C x H x W]
         :return: (Tensor) List of latent codes
         """
-        result = self.encoder(inp)
+        result = self.encoder_(inp)
         result = torch.flatten(result, start_dim=1)
 
         # Split the result into mu and var components
         # of the latent Gaussian distribution
-        mu = self.fc_mu(result)
-        log_var = self.fc_var(result)
+        mu = self.fc_mu_(result)
+        log_var = self.fc_var_(result)
 
         return mu, log_var
 
-    def raster(self, all_points, color=OPAQUE_BLACK, verbose=False, white_background=True) -> torch.Tensor:
+    def raster_(self, all_points, color=OPAQUE_BLACK, verbose=False, white_background=True) -> torch.Tensor:
         assert len(color) == 4
-        render_size = self.img_size
-        bs = all_points.shape[0]
+        render_size = self.img_size_
         if verbose:
-            render_size = render_size * 2
-        outputs = []
-        all_points = all_points * render_size
-        num_ctrl_pts = torch.zeros(self.curves, dtype=torch.int32).to(all_points.device) + 2
+            render_size *= 2
+        all_points *= render_size
+
+        num_ctrl_pts = torch.zeros(self.curves_, dtype=torch.int32).to(all_points.device) + 2
         color = make_tensor(color).to(all_points.device)
-        for k in range(bs):
+        batch_size = all_points.shape[0]
+        outputs = []
+        for k in range(batch_size):
             # Get point parameters from network
             render = pydiffvg.RenderFunction.apply
-            shapes = []
-            shape_groups = []
             points = all_points[k].contiguous()  # [self.sort_idx[k]] # .cpu()
 
             if verbose:
-                np.random.seed(0)
-                colors = np.random.rand(self.curves, 4)
-                high = np.array((0.565, 0.392, 0.173, 1))
-                low = np.array((0.094, 0.310, 0.635, 1))
-                diff = (high - low) / self.curves
-                colors[:, 3] = 1
-                for i in range(self.curves):
-                    scale = diff * i
-                    color = low + scale
-                    color[3] = 1
-                    color = torch.tensor(color)
-                    num_ctrl_pts = torch.zeros(1, dtype=torch.int32) + 2
-                    if i * 3 + 4 > self.curves * 3:
-                        curve_points = torch.stack([points[i * 3], points[i * 3 + 1], points[i * 3 + 2], points[0]])
-                    else:
-                        curve_points = points[i * 3:i * 3 + 4]
-                    path = pydiffvg.Path(
-                        num_control_points=num_ctrl_pts, points=curve_points,
-                        is_closed=False, stroke_width=torch.tensor(4))
-                    path_group = pydiffvg.ShapeGroup(
-                        shape_ids=torch.tensor([i]),
-                        fill_color=None,
-                        stroke_color=color)
-                    shapes.append(path)
-                    shape_groups.append(path_group)
+                shapes, shape_groups = raster_verbose(self.curves_, points)
             else:
-                path = pydiffvg.Path(
-                    num_control_points=num_ctrl_pts, points=points,
-                    is_closed=True)
-
-                shapes.append(path)
-                path_group = pydiffvg.ShapeGroup(
-                    shape_ids=torch.tensor([len(shapes) - 1]),
-                    fill_color=color,
-                    stroke_color=color)
-                shape_groups.append(path_group)
+                shapes = [pydiffvg.Path(num_control_points=num_ctrl_pts, points=points, is_closed=True)]
+                shape_groups = [
+                    pydiffvg.ShapeGroup(
+                        shape_ids=torch.tensor([len(shapes) - 1]),
+                        fill_color=color,
+                        stroke_color=color
+                    )
+                ]
 
             scene_args = pydiffvg.RenderFunction.serialize_scene(render_size, render_size, shapes, shape_groups)
             out = render(render_size,  # width
@@ -283,6 +280,7 @@ class VectorVAE(BaseVAE):
                          *scene_args)
             out = out.permute(2, 0, 1).view(4, render_size, render_size)  # [:3]#.mean(0, keepdim=True)
             outputs.append(out)
+
         output = torch.stack(outputs).to(all_points.device)
 
         # map to [-1, 1]
@@ -290,6 +288,7 @@ class VectorVAE(BaseVAE):
             alpha = output[:, 3:4, :, :]
             output_white_bg = output[:, :3, :, :] * alpha + (1 - alpha)
             output = torch.cat([output_white_bg, alpha], dim=1)
+
         del num_ctrl_pts, color
         return output
 
@@ -299,60 +298,51 @@ class VectorVAE(BaseVAE):
         :param z: (Tensor) [B x D]
         :return: (Tensor) [B x C x H x W]
         """
-        self.id = self.id.to(z.device)
+        self.id_circle_ = self.id_circle_.to(z.device)
 
-        bs = z.shape[0]
-        z = z[:, None, :].repeat([1, self.curves * 3, 1])
-        base_control_features = self.base_control_features[None, :, :].repeat(bs, self.curves, 1)
+        batch_size = z.shape[0]
+        z = z[:, None, :].repeat([1, self.curves_ * 3, 1])
+        base_control_features = self.base_control_features[None, :, :].repeat(batch_size, self.curves_, 1)
         z_base = torch.cat([z, base_control_features], dim=-1)
-        if self.learn_sampling:
-            self.angles = self.angles.to(z.device)
-            angles = self.angles[None, :, None].repeat(bs, 1, 1)
+        if self.learn_sampling_:
+            self.angles_ = self.angles_.to(z.device)
+            angles = self.angles_[None, :, None].repeat(batch_size, 1, 1)
             x = torch.cos(angles)  # + r
             y = torch.sin(angles)  # + r
             z_angles = torch.cat([z_base, x, y], dim=-1)
 
-            angles_delta = self.sample_deformation(self.decode_transform(z_angles))
-            angles_delta = tanh(angles_delta / 50) * self.deformation_range
-            angles_delta = self.decode_transform(angles_delta)
+            angles_delta = self.sample_deformation_(decode_transform(z_angles))
+            angles_delta = tanh(angles_delta / 50) * pi / 2
+            angles_delta = decode_transform(angles_delta)
 
             new_angles = angles + angles_delta
-            x = (torch.cos(new_angles) * self.circle_rad)  # + r
-            y = (torch.sin(new_angles) * self.circle_rad)  # + r
+            x = (torch.cos(new_angles) * self.circle_rad_)  # + r
+            y = (torch.sin(new_angles) * self.circle_rad_)  # + r
             z = torch.cat([z_base, x, y], dim=-1)
         else:
-            id = self.id[None, :, :].repeat(bs, 1, 1)
-            z = torch.cat([z_base, id], dim=-1)
+            id_circle = self.id_circle_[None, :, :].repeat(batch_size, 1, 1)
+            z = torch.cat([z_base, id_circle], dim=-1)
 
-        all_points = self.decoder_input(self.decode_transform(z))
-        for compute_block in self.point_predictor:
+        all_points = self.decoder_input_(decode_transform(z))
+        for compute_block in self.point_predictor_:
             all_points = relu(all_points)
-            # all_points = torch.cat([z_base_transform, all_points], dim=1)
             all_points = compute_block(all_points)
-        all_points = self.decode_transform(torch.sigmoid(all_points / self.scale_factor))
+        all_points = decode_transform(torch.sigmoid(all_points / self.scale_factor_))
+
         return all_points
 
-    def reparameterize(self, mu: torch.Tensor, log_var: torch.Tensor) -> torch.Tensor:
-        return reparameterize(mu, log_var) if self.reparameterize_ else mu
+    def reparameterize_(self, mu: torch.Tensor, log_var: torch.Tensor) -> torch.Tensor:
+        return reparameterize(mu, log_var) if self.should_reparameterize_ else mu
 
     def forward(self, inp: torch.Tensor, **kwargs) -> List[torch.Tensor]:
         mu, log_var = self.encode(inp)
-        z = self.reparameterize(mu, log_var)
+        z = self.reparameterize_(mu, log_var)
         all_points = self.decode(z)
         if not self.only_auxiliary_training or self.save_lossvspath:
-            output = self.raster(all_points, white_background=True)
+            output = self.raster_(all_points, white_background=True)
         else:
             output = torch.zeros([1, 3, 64, 64])
         return [output, inp, mu, log_var]
-
-    def gaussian_pyramid_loss(self, recons, inp):
-        recon_loss = self.loss_fn(recons, inp, reduction='none').mean(
-            dim=[1, 2, 3])  # + self.lpips(recons, inp)*0.1
-        for j in range(2, 5):
-            recons = dsample(recons)
-            inp = dsample(inp)
-            recon_loss = recon_loss + self.loss_fn(recons, inp, reduction='none').mean(dim=[1, 2, 3]) / j
-        return recon_loss
 
     def loss_function(self, *args, **kwargs) -> dict:
         """
@@ -363,75 +353,61 @@ class VectorVAE(BaseVAE):
         :return:
         """
         recons = args[0][:, :3, :, :]
-        inp = args[1]
-        mu = args[2]
-        log_var = args[3]
-        other_losses = 0
-        if len(args) == 5:
-            other_losses = args[4]
+        inp, mu, log_var = args[:4]
+        other_losses = args[4] if len(args) == 5 else 0
         aux_loss = 0
         kld_loss = 0
         kld_weight = kwargs['M_N']  # Account for the minibatch samples from the dataset
+
         if not self.only_auxiliary_training or self.save_lossvspath:
-            recon_loss = self.gaussian_pyramid_loss(recons, inp)
+            recon_loss = gaussian_pyramid_loss(recons, inp, self.loss_fn_)
         else:
             recon_loss = torch.zeros([1])
+
         if self.only_auxiliary_training:
             recon_loss_non_reduced = recon_loss[:, None].clone().detach()
-            spacing = self.aux_network(mu.clone().detach())
+            spacing = self.aux_network_(mu.clone().detach())
             latents = mu.cpu().numpy()
             num_latents = latents.shape[0]
+
             if self.save_lossvspath:
                 recon_loss_non_reduced_cpu = recon_loss_non_reduced.cpu().numpy()
-                keys = self.latent_lossvpath.keys()
+                keys = self.latent_lossvpath_.keys()
                 for i in range(num_latents):
                     if np.array2string(latents[i]) in keys:
-                        pair = make_tensor([self.curves, recon_loss_non_reduced_cpu[i, 0], ])[None, :].to(mu.device)
-                        self.latent_lossvpath[np.array2string(latents[i])] \
-                            = torch.cat([self.latent_lossvpath[np.array2string(latents[i])], pair], dim=0)
+                        pair = make_tensor([self.curves_, recon_loss_non_reduced_cpu[i, 0], ])[None, :].to(mu.device)
+                        self.latent_lossvpath_[np.array2string(latents[i])] \
+                            = torch.cat([self.latent_lossvpath_[np.array2string(latents[i])], pair], dim=0)
                     else:
-                        self.latent_lossvpath[np.array2string(latents[i])] = make_tensor(
-                            [[self.curves, recon_loss_non_reduced_cpu[i, 0]], ]).to(mu.device)
-                num = torch.ones_like(spacing[:, 0]) * self.curves
+                        self.latent_lossvpath_[np.array2string(latents[i])] = make_tensor(
+                            [[self.curves_, recon_loss_non_reduced_cpu[i, 0]], ]).to(mu.device)
+                num = torch.ones_like(spacing[:, 0]) * self.curves_
                 est_loss = spacing[:, 2] + 1 / torch.exp(num * spacing[:, 0] - spacing[:, 1])
-
                 aux_loss = torch.abs(num * (est_loss - recon_loss_non_reduced)).mean() * 10
             else:
                 aux_loss = 0
                 for i in range(num_latents):
-                    pair = self.latent_lossvpath[np.array2string(latents[i])]
+                    pair = self.latent_lossvpath_[np.array2string(latents[i])]
                     est_loss = spacing[i, 2] + 1 / torch.exp(pair[:, 0] * spacing[i, 0] - spacing[i, 1])
                     aux_loss += torch.abs(pair[:, 0] * (est_loss - pair[:, 1])).mean()
-            loss = aux_loss
-            kld_loss = 0  # self.beta*kld_weight * kld_loss
-            logs = {'Reconstruction_Loss': recon_loss.mean(), 'KLD': -kld_loss, 'aux_loss': aux_loss}
-            return {'loss': loss, 'progress_bar': logs}
+            logs = {'Reconstruction_Loss': recon_loss.mean(), 'KLD': 0, 'aux_loss': aux_loss}
+
+            return {'loss': aux_loss, 'progress_bar': logs}
+
         recon_loss = recon_loss.mean()
         if self.beta > 0:
-            kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1), dim=0)
-            kld_loss = self.beta * kld_weight * kld_loss
-        recon_loss = recon_loss * 10
-        loss = recon_loss + kld_loss + other_losses * self.other_losses_weight
-        logs = {'Reconstruction_Loss': recon_loss, 'KLD': -kld_loss, 'aux_loss': aux_loss,
-                'other losses': other_losses * self.other_losses_weight}
+            kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1), dim=0)\
+                       * self.beta * kld_weight
+        recon_loss *= 10
+        loss = recon_loss + kld_loss + other_losses * self.other_losses_weight_
+        logs = {
+            'Reconstruction_Loss': recon_loss,
+            'KLD': -kld_loss,
+            'aux_loss': aux_loss,
+            'other losses': other_losses * self.other_losses_weight_
+        }
+
         return {'loss': loss, 'progress_bar': logs}
-
-    def sample(self, num_samples: int, current_device: int, **kwargs) -> torch.Tensor:
-        """
-        Samples from the latent space and return the corresponding
-        image space map.
-        :param num_samples: (Int) Number of samples
-        :param current_device: (Int) Device to run the model
-        :return: (Tensor)
-        """
-        z = torch.randn(num_samples,
-                        self.latent_dim)
-
-        z = z.to(current_device)
-
-        all_points = self.decode(z)
-        samples = self.raster(all_points)
-        return samples
 
     def generate(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
         """
@@ -440,42 +416,39 @@ class VectorVAE(BaseVAE):
         :return: (Tensor) [B x C x H x W]
         """
         mu, log_var = self.encode(x)
-        z = self.reparameterize(mu, log_var)
-        return self.raster(self.decode(z), verbose=random.choice([True, False]))
+        z = self.reparameterize_(mu, log_var)
+        return self.raster_(self.decode(z), verbose=random.choice([True, False]))
 
     def save(self, x, save_dir, name):
         z, log_var = self.encode(x)
         all_points = self.decode(z)
-        # Process the batch sequentially
-        for k in range(1):
-            # Get point parameters from network
-            shapes = []
-            shape_groups = []
-            points = all_points[k].cpu()  # [self.sort_idx[k]]
 
-            color = torch.cat([torch.tensor([0, 0, 0, 1]), ])
-            num_ctrl_pts = torch.zeros(self.curves, dtype=torch.int32) + 2
+        # Get point parameters from network
+        points = all_points[0].cpu()  # [self.sort_idx[k]]
 
-            path = pydiffvg.Path(
-                num_control_points=num_ctrl_pts, points=points,
-                is_closed=True)
+        color = torch.cat([torch.tensor([0, 0, 0, 1]), ])
+        num_ctrl_pts = torch.zeros(self.curves_, dtype=torch.int32) + 2
 
-            shapes.append(path)
-            path_group = pydiffvg.ShapeGroup(
+        shapes = [
+            pydiffvg.Path(num_control_points=num_ctrl_pts, points=points, is_closed=True)
+        ]
+        shape_groups = [
+            pydiffvg.ShapeGroup(
                 shape_ids=torch.tensor([len(shapes) - 1]),
                 fill_color=color,
-                stroke_color=color)
-            shape_groups.append(path_group)
-            pydiffvg.save_svg(f"{save_dir}{name}/{name}.svg",
-                              self.img_size, self.img_size, shapes, shape_groups)
+                stroke_color=color
+            )
+        ]
+        pydiffvg.save_svg(f"{save_dir}{name}/{name}.svg", self.img_size_, self.img_size_, shapes, shape_groups)
 
+    # TODO: interpolation functions seem hardcoded
     def interpolate(self, x: torch.Tensor, **kwargs) -> List[torch.Tensor]:
         mu, log_var = self.encode(x)
         all_interpolations = []
         for i in range(mu.shape[0]):
             z = interpolate_vectors(mu[2], mu[i], 10)
             all_points = self.decode(z)
-            all_interpolations.append(self.raster(all_points, verbose=kwargs['verbose']))
+            all_interpolations.append(self.raster_(all_points, verbose=kwargs['verbose']))
         return all_interpolations
 
     def interpolate_2d(self, x: torch.Tensor, **kwargs) -> List[torch.Tensor]:
@@ -485,7 +458,7 @@ class VectorVAE(BaseVAE):
         for i in range(10):
             z = interpolate_vectors(y_axis[i], mu[3], 10)
             all_points = self.decode(z)
-            all_interpolations.append(self.raster(all_points, verbose=kwargs['verbose']))
+            all_interpolations.append(self.raster_(all_points, verbose=kwargs['verbose']))
         return all_interpolations
 
     def naive_vector_interpolate(self, x: torch.Tensor, **kwargs) -> [torch.Tensor]:
@@ -494,7 +467,7 @@ class VectorVAE(BaseVAE):
         all_interpolations = []
         for i in range(mu.shape[0]):
             z = interpolate_vectors(all_points[2], all_points[i], 10)
-            all_interpolations.append(self.raster(z, verbose=kwargs['verbose']))
+            all_interpolations.append(self.raster_(z, verbose=kwargs['verbose']))
         return all_interpolations
 
     def visualize_sampling(self, x: torch.Tensor, **kwargs) -> [torch.Tensor]:
@@ -503,26 +476,25 @@ class VectorVAE(BaseVAE):
         for i in range(5, 27):
             self.redo_features(i)
             all_points = self.decode(mu)
-            all_interpolations.append(self.raster(all_points, verbose=kwargs['verbose']))
+            all_interpolations.append(self.raster_(all_points, verbose=kwargs['verbose']))
         return all_interpolations
 
     def sampling_error(self, x: torch.Tensor) -> torch.Tensor:
         error = []
         figure = plt.figure(figsize=(6, 6))
-        bs = x.shape[0]
+        batch_size = x.shape[0]
         for i in range(7, 25):
             self.redo_features(i)
             results = self.forward(x)
             recons = results[0][:, :3, :, :]
             input_batch = results[1]
-
-            recon_loss = self.gaussian_pyramid_loss(recons, input_batch)
-            print(recon_loss)
+            recon_loss = gaussian_pyramid_loss(recons, input_batch, self.loss_fn_)
             error.append(recon_loss)
         etn = torch.stack(error, dim=1).numpy()
+
         np.savetxt('sample_error.csv', etn, delimiter=',')
         y = np.arange(7, 25)
-        for i in range(bs):
+        for i in range(batch_size):
             plt.plot(y, etn[i, :], label=str(i + 1))
         plt.legend(loc='upper right')
         img = fig2data(figure)
@@ -535,18 +507,19 @@ class VectorVAE(BaseVAE):
         :return: (Tensor) [B x C x H x W]
         """
         mu, log_var = self.encode(x)
-        bs = mu.shape[0]
+        batch_size = mu.shape[0]
         all_spacing = []
         figure = plt.figure(figsize=(6, 6))
 
         for i in np.arange(7, 25):
-            spacing = self.aux_network(mu.clone().detach())
+            spacing = self.aux_network_(mu.clone().detach())
             num = torch.ones_like(spacing[:, 0]) * i
             est_loss = spacing[:, 2] + (spacing[:, 0] / num)
             all_spacing.append(est_loss)
         all_spacing = torch.stack(all_spacing, dim=1).detach().cpu().numpy()
+
         y = np.arange(7, 25)
-        for i in range(bs):
+        for i in range(batch_size):
             plt.plot(y, all_spacing[i, :], label=str(i + 1))
         plt.legend(loc='upper right')
         img = fig2data(figure)
