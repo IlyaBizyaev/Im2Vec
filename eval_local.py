@@ -1,21 +1,13 @@
 import os
 
-import numpy as np
-
-import torch.backends.cudnn as cudnn
-
 from experiment import VAEExperiment
 from models import *
-from utils import request_and_read_config
+from utils import enable_reproducibility, request_and_read_config
 
 
 config = request_and_read_config()
 
-# For reproducibility
-torch.manual_seed(config['logging_params']['manual_seed'])
-np.random.seed(config['logging_params']['manual_seed'])
-cudnn.deterministic = True
-cudnn.benchmark = False
+enable_reproducibility(config)
 
 
 def main():
@@ -39,6 +31,7 @@ def main():
     checkpoint = torch.load(load_weight)
     experiment.load_state_dict(checkpoint['state_dict'])
     _ = experiment.train_dataloader()
+
     experiment.eval()
     experiment.freeze()
     experiment.sample_interpolate(

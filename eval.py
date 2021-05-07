@@ -1,35 +1,18 @@
 import os
 
-import numpy as np
-
-import torch.backends.cudnn as cudnn
-
-from pytorch_lightning.loggers import TestTubeLogger
-
-from models import *
 from experiment import VAEExperiment
-
-from utils import request_and_read_config
+from models import *
+from utils import enable_reproducibility, request_and_read_config, make_test_tube_logger
 
 
 config = request_and_read_config()
 
-tt_logger = TestTubeLogger(
-    save_dir=config['logging_params']['save_dir'],
-    name=config['logging_params']['name'],
-    debug=False,
-    create_git_tag=False,
-    version=config['logging_params']['version'],
-)
-
-# For reproducibility
-torch.manual_seed(config['logging_params']['manual_seed'])
-np.random.seed(config['logging_params']['manual_seed'])
-cudnn.deterministic = True
-cudnn.benchmark = False
+enable_reproducibility(config)
 
 
 def main():
+    tt_logger = make_test_tube_logger(config)
+
     model = vae_models[config['model_params']['name']](
         imsize=config['exp_params']['img_size'],
         **config['model_params']
@@ -48,6 +31,7 @@ def main():
     else:
         model_path = '{}/{}'.format(model_save_path, config['logging_params']['resume'])
     experiment = VAEExperiment.load_from_checkpoint(model_path, vae_model=model, params=config['exp_params'])
+
     experiment.eval()
     experiment.freeze()
     experiment.sample_interpolate(

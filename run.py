@@ -3,27 +3,15 @@ from shutil import copytree, ignore_patterns, rmtree
 
 import click
 
-import numpy as np
-import torch.backends.cudnn as cudnn
-
 from pytorch_lightning import Trainer
-from pytorch_lightning.loggers import TestTubeLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from models import *
 from experiment import VAEExperiment
-from utils import request_and_read_config
+from utils import enable_reproducibility, request_and_read_config, make_test_tube_logger
 
 
 config = request_and_read_config()
-
-tt_logger = TestTubeLogger(
-    save_dir=config['logging_params']['save_dir'],
-    name=config['logging_params']['name'],
-    debug=False,
-    create_git_tag=False,
-    version=config['logging_params']['version'],
-)
 
 IGNORE_PATTERNS = ignore_patterns('*.pyc', '*.md', 'tmp*', 'logs*', 'data*')
 
@@ -31,6 +19,7 @@ IGNORE_PATTERNS = ignore_patterns('*.pyc', '*.md', 'tmp*', 'logs*', 'data*')
 def main():
     root_dir = os.getcwd()
     resume = False
+    tt_logger = make_test_tube_logger(config)
     model_save_path = '{}/{}/version_{}/'.format(
         config['logging_params']['save_dir'],
         config['logging_params']['name'],
@@ -49,11 +38,7 @@ def main():
     else:
         copytree(root_dir, model_save_path, ignore=IGNORE_PATTERNS)
 
-    # For reproducibility
-    torch.manual_seed(config['logging_params']['manual_seed'])
-    np.random.seed(config['logging_params']['manual_seed'])
-    cudnn.deterministic = True
-    cudnn.benchmark = False
+    enable_reproducibility(config)
 
     print(config['model_params'])
     model = vae_models[config['model_params']['name']](

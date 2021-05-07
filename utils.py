@@ -3,6 +3,16 @@ import yaml
 
 import numpy as np
 import torch
+import torch.backends.cudnn as cudnn
+
+from pytorch_lightning.loggers import TestTubeLogger
+
+
+def enable_reproducibility(config):
+    torch.manual_seed(config['logging_params']['manual_seed'])
+    np.random.seed(config['logging_params']['manual_seed'])
+    cudnn.deterministic = True
+    cudnn.benchmark = False
 
 
 def request_and_read_config():
@@ -19,6 +29,16 @@ def request_and_read_config():
             return yaml.safe_load(file)
         except yaml.YAMLError as exc:
             print(exc)
+
+
+def make_test_tube_logger(config):
+    return TestTubeLogger(
+        save_dir=config['logging_params']['save_dir'],
+        name=config['logging_params']['name'],
+        debug=False,
+        create_git_tag=False,
+        version=config['logging_params']['version'],
+    )
 
 
 def fig2data(fig):
