@@ -57,15 +57,3 @@ def make_tensor(x, grad=False):
     x = torch.tensor(x, dtype=torch.float32)
     x.requires_grad = grad
     return x
-
-
-def hard_composite(**kwargs):
-    layers = kwargs['layers']
-    n = len(layers)
-    alpha = (1 - layers[n - 1][:, 3:4, :, :])
-    rgb = layers[n - 1][:, :3] * layers[n - 1][:, 3:4, :, :]
-    for i in reversed(range(n - 1)):
-        rgb = rgb + layers[i][:, :3] * layers[i][:, 3:4, :, :] * alpha
-        alpha = (1 - layers[i][:, 3:4, :, :]) * alpha
-    rgb = rgb + alpha
-    return rgb

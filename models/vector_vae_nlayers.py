@@ -7,7 +7,7 @@ import pydiffvg
 import numpy as np
 
 from models import VectorVAE, interpolate_vectors
-from utils import make_tensor, hard_composite
+from utils import make_tensor
 
 
 def soft_composite(**kwargs):
@@ -74,10 +74,6 @@ class VectorVAEnLayers(VectorVAE):
         ]
 
         self.rnn = torch.nn.LSTM(latent_dim, latent_dim, 2, bidirectional=True)
-        self.composite_fn = hard_composite
-        if kwargs['composite_fn'] == 'soft':
-            print('Using Differential Compositing')
-            self.composite_fn = soft_composite
         # TODO: this is literally just ReLU
         self.divide_shape = torch.nn.Sequential(
             torch.nn.ReLU(),  # bound spatial extent
@@ -129,7 +125,7 @@ class VectorVAEnLayers(VectorVAE):
             if return_overlap_loss:
                 loss += self.control_polygon_distance(all_points)
 
-        output = self.composite_fn(layers=layers, z_layers=z_layers)
+        output = soft_composite(layers=layers, z_layers=z_layers)
         if return_overlap_loss:
             return output, loss
         return output
@@ -193,7 +189,7 @@ class VectorVAEnLayers(VectorVAE):
                 layer = self.raster(all_points_interpolate, self.colors[i], verbose=kwargs['verbose'])
                 layers.append(layer)
 
-            output = self.composite_fn(layers=layers)
+            output = soft_composite(layers=layers)
             all_interpolations.append(output)
         return all_interpolations
 
