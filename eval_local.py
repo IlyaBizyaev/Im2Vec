@@ -2,7 +2,7 @@ import os
 
 from experiment import VAEExperiment
 from models import *
-from utils import enable_reproducibility, request_and_read_config
+from utils import enable_reproducibility, request_and_read_config, make_model, get_last_weight_path
 
 
 config = request_and_read_config()
@@ -17,15 +17,10 @@ def main():
     config['exp_params']['data_path'] = os.path.join(parent, config['exp_params']['data_path'])
     print(parent, config['exp_params']['data_path'])
 
-    model = VAE_MODELS[config['model_params']['name']](
-        imsize=config['exp_params']['img_size'],
-        **config['model_params']
-    )
+    model = make_model(config)
     experiment = VAEExperiment(model, config['exp_params'])
 
-    weights = [x for x in os.listdir(model_save_path) if '.ckpt' in x]
-    weights.sort(key=lambda x: os.path.getmtime(x))
-    load_weight = weights[-1]
+    load_weight = get_last_weight_path(model_save_path)
     print('loading: ', load_weight)
 
     checkpoint = torch.load(load_weight)

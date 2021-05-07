@@ -1,8 +1,11 @@
-import os
-
 from experiment import VAEExperiment
-from models import *
-from utils import enable_reproducibility, request_and_read_config, make_test_tube_logger
+from utils import (
+    enable_reproducibility,
+    get_last_weight_path,
+    make_model,
+    make_test_tube_logger,
+    request_and_read_config,
+)
 
 
 config = request_and_read_config()
@@ -13,10 +16,7 @@ enable_reproducibility(config)
 def main():
     tt_logger = make_test_tube_logger(config)
 
-    model = VAE_MODELS[config['model_params']['name']](
-        imsize=config['exp_params']['img_size'],
-        **config['model_params']
-    )
+    model = make_model(config)
     model_save_path = '{}/{}/version_{}'.format(
         config['logging_params']['save_dir'],
         config['logging_params']['name'],
@@ -24,9 +24,7 @@ def main():
     )
 
     if config['logging_params']['resume'] is None:
-        weights = [os.path.join(model_save_path, x) for x in os.listdir(model_save_path) if '.ckpt' in x]
-        weights.sort(key=lambda x: os.path.getmtime(x))
-        model_path = weights[-1]
+        model_path = get_last_weight_path(model_save_path)
         print('loading: ', model_path)
     else:
         model_path = '{}/{}'.format(model_save_path, config['logging_params']['resume'])

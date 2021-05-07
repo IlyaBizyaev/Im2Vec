@@ -55,8 +55,8 @@ class VanillaVAE(BaseVAE):
             in_channels = h_dim
 
         self.encoder = torch.nn.Sequential(*modules)
-        imsize = kwargs['imsize']
-        outsize = int(imsize / (2 ** 5))
+        img_size = kwargs['img_size']
+        outsize = int(img_size / (2 ** 5))
         self.fc_mu = torch.nn.Linear(hidden_dims[-1] * outsize * outsize, latent_dim)
         self.fc_var = torch.nn.Linear(hidden_dims[-1] * outsize * outsize, latent_dim)
 

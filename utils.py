@@ -1,4 +1,5 @@
 import argparse
+import os
 import yaml
 
 import numpy as np
@@ -6,6 +7,8 @@ import torch
 import torch.backends.cudnn as cudnn
 
 from pytorch_lightning.loggers import TestTubeLogger
+
+from models import VAE_MODELS
 
 
 def enable_reproducibility(config):
@@ -31,6 +34,12 @@ def request_and_read_config():
             print(exc)
 
 
+def get_last_weight_path(model_save_path: str) -> str:
+    weights = [os.path.join(model_save_path, x) for x in os.listdir(model_save_path) if '.ckpt' in x]
+    weights.sort(key=lambda x: os.path.getmtime(x))
+    return weights[-1] if weights else None
+
+
 def make_test_tube_logger(config):
     return TestTubeLogger(
         save_dir=config['logging_params']['save_dir'],
@@ -41,16 +50,11 @@ def make_test_tube_logger(config):
     )
 
 
-def fig2data(fig):
-    """
-    @brief Convert a Matplotlib figure to a 4D numpy array with RGBA channels and return it
-    @param fig a matplotlib figure
-    @return a numpy 3D array of RGBA values
-    """
-    # draw the renderer
-    fig.canvas.draw()
-    x = np.array(fig.canvas.renderer.buffer_rgba())
-    return x[:, :, :3]
+def make_model(config):
+    return VAE_MODELS[config['model_params']['name']](
+        img_size=config['exp_params']['img_size'],
+        **config['model_params']
+    )
 
 
 def make_tensor(x, grad=False):

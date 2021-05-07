@@ -8,12 +8,18 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 
 from models import *
 from experiment import VAEExperiment
-from utils import enable_reproducibility, request_and_read_config, make_test_tube_logger
+from utils import (
+    enable_reproducibility,
+    get_last_weight_path,
+    request_and_read_config,
+    make_model,
+    make_test_tube_logger
+)
 
 
 config = request_and_read_config()
 
-IGNORE_PATTERNS = ignore_patterns('*.pyc', '*.md', 'tmp*', 'logs*', 'data*')
+IGNORE_PATTERNS = ignore_patterns('*.pyc', '*.md', 'tmp*', 'logs*', 'data*', '.git*')
 
 
 def main():
@@ -41,32 +47,28 @@ def main():
     enable_reproducibility(config)
 
     print(f"Model params: {config['model_params']}")
-    model = VAE_MODELS[config['model_params']['name']](
-        imsize=config['exp_params']['img_size'],
-        **config['model_params']
-    )
+    model = make_model(config)
     experiment = VAEExperiment(model, config['exp_params'])
 
     model_path = None
     if config['model_params']['only_auxiliary_training'] or config['model_params']['memory_leak_training'] or resume:
-        weights = [os.path.join(model_save_path, x) for x in os.listdir(model_save_path) if '.ckpt' in x]
-        weights.sort(key=lambda x: os.path.getmtime(x))
-        if len(weights) > 0:
-            model_path = weights[-1]
-            print('loading: ', weights[-1])
-            if config['model_params']['only_auxiliary_training']:
-                checkpoint = torch.load(model_path)
-                experiment.load_state_dict(checkpoint['state_dict'])
-                model_path = None
+        model_path = get_last_weight_path(model_save_path)
+        print('loading: ', model_path)
+        if config['model_params']['only_auxiliary_training']:
+            checkpoint = torch.load(model_path)
+            experiment.load_state_dict(checkpoint['state_dict'])
+            model_path = None
 
     checkpoint_callback = ModelCheckpoint(model_save_path, verbose=True, save_last=True)
 
-    print(config['exp_params'], config['logging_params']['save_dir']+config['logging_params']['name'])
-    runner = Trainer(callbacks=[checkpoint_callback],
-                     resume_from_checkpoint=model_path,
-                     logger=tt_logger,
-                     weights_summary='full',
-                     **config['trainer_params'])
+    print(f"Experiment params: {config['exp_params']}")
+    runner = Trainer(
+        callbacks=[checkpoint_callback],
+        resume_from_checkpoint=model_path,
+        logger=tt_logger,
+        weights_summary='full',
+        **config['trainer_params']
+    )
 
     print(f"======= Training {config['model_params']['name']} =======")
     runner.fit(experiment)

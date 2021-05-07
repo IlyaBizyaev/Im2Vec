@@ -40,14 +40,14 @@ class VectorVAEnLayers(VectorVAE):
                  latent_dim: int,
                  hidden_dims: List = None,
                  loss_fn: str = 'MSE',
-                 imsize: int = 128,
+                 img_size: int = 128,
                  paths: int = 4,
                  **kwargs) -> None:
         super(VectorVAEnLayers, self).__init__(in_channels,
                                                latent_dim,
                                                hidden_dims,
                                                loss_fn,
-                                               imsize,
+                                               img_size,
                                                paths,
                                                **kwargs)
 
@@ -205,7 +205,7 @@ class VectorVAEnLayers(VectorVAE):
     # TODO: this feels largely duplicated and hardcoded
     def save(self, all_points, save_dir, name, verbose=False, white_background=True):
         # note that this if for a single shape and bs dimension should have multiple curves
-        render_size = self.imsize
+        render_size = self.img_size
         bs = all_points.shape[0]
         if verbose:
             render_size = render_size * 2
@@ -277,4 +277,4 @@ class VectorVAEnLayers(VectorVAE):
                     stroke_color=color)
                 shape_groups.append(path_group)
         pydiffvg.save_svg(f"{save_dir}{name}/{name}.svg",
-                          self.imsize, self.imsize, shapes, shape_groups)
+                          self.img_size, self.img_size, shapes, shape_groups)

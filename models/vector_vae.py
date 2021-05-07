@@ -14,12 +14,24 @@ import kornia
 import pydiffvg
 
 from models import BaseVAE, interpolate_vectors, reparameterize
-from utils import fig2data, make_tensor
+from utils import make_tensor
 
 
 OPAQUE_BLACK = (0, 0, 0, 1)
 
 dsample = kornia.transform.PyrDown()
+
+
+def fig2data(fig):
+    """
+    @brief Convert a Matplotlib figure to a 4D numpy array with RGBA channels and return it
+    @param fig a matplotlib figure
+    @return a numpy 3D array of RGBA values
+    """
+    # draw the renderer
+    fig.canvas.draw()
+    x = np.array(fig.canvas.renderer.buffer_rgba())
+    return x[:, :, :3]
 
 
 def bilinear_downsample(tensor, size):
@@ -43,13 +55,13 @@ class VectorVAE(BaseVAE):
                  latent_dim: int,
                  hidden_dims: List[int] = None,
                  loss_fn: str = 'MSE',
-                 imsize: int = 128,
+                 img_size: int = 128,
                  paths: int = 4,
                  **kwargs) -> None:
         super(VectorVAE, self).__init__()
 
         self.latent_dim = latent_dim
-        self.imsize = imsize
+        self.img_size = img_size
         self.beta = kwargs['beta']
         self.other_losses_weight = 0
         self.reparameterize_ = False
@@ -92,7 +104,7 @@ class VectorVAE(BaseVAE):
                     torch.nn.ReLU())
             )
             in_channels = h_dim
-        outsize = int(imsize / (2 ** 5))
+        outsize = int(img_size / (2 ** 5))
         self.fc_mu = torch.nn.Linear(hidden_dims[-1] * outsize * outsize, latent_dim)
         self.fc_var = torch.nn.Linear(hidden_dims[-1] * outsize * outsize, latent_dim)
         self.encoder = torch.nn.Sequential(*modules)
@@ -208,7 +220,7 @@ class VectorVAE(BaseVAE):
 
     def raster(self, all_points, color=OPAQUE_BLACK, verbose=False, white_background=True) -> torch.Tensor:
         assert len(color) == 4
-        render_size = self.imsize
+        render_size = self.img_size
         bs = all_points.shape[0]
         if verbose:
             render_size = render_size * 2
@@ -455,7 +467,7 @@ class VectorVAE(BaseVAE):
                 stroke_color=color)
             shape_groups.append(path_group)
             pydiffvg.save_svg(f"{save_dir}{name}/{name}.svg",
-                              self.imsize, self.imsize, shapes, shape_groups)
+                              self.img_size, self.img_size, shapes, shape_groups)
 
     def interpolate(self, x: torch.Tensor, **kwargs) -> List[torch.Tensor]:
         mu, log_var = self.encode(x)
