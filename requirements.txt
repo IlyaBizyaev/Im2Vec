@@ -10,3 +10,4 @@ matplotlib
 PyYAML
 svgpathtools
 Pillow
+ranger
