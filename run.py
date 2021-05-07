@@ -41,7 +41,7 @@ def main():
     enable_reproducibility(config)
 
     print(config['model_params'])
-    model = vae_models[config['model_params']['name']](
+    model = VAE_MODELS[config['model_params']['name']](
         imsize=config['exp_params']['img_size'],
         **config['model_params']
     )

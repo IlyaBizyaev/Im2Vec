@@ -17,7 +17,7 @@ def main():
     config['exp_params']['data_path'] = os.path.join(parent, config['exp_params']['data_path'])
     print(parent, config['exp_params']['data_path'])
 
-    model = vae_models[config['model_params']['name']](
+    model = VAE_MODELS[config['model_params']['name']](
         imsize=config['exp_params']['img_size'],
         **config['model_params']
     )

@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import kornia
 import pydiffvg
 
-from models import BaseVAE, interpolate_vectors
+from models import BaseVAE, interpolate_vectors, reparameterize
 from utils import fig2data, make_tensor
 
 
@@ -189,7 +189,7 @@ class VectorVAE(BaseVAE):
             loss = loss + distance(c_0, c_1)
         return loss
 
-    def encode(self, inp: torch.Tensor) -> List[torch.Tensor]:
+    def encode(self, inp: torch.Tensor) -> (torch.Tensor, torch.Tensor):
         """
         Encodes the input by passing through the encoder network
         and returns the latent codes.
@@ -204,7 +204,7 @@ class VectorVAE(BaseVAE):
         mu = self.fc_mu(result)
         log_var = self.fc_var(result)
 
-        return [mu, log_var]
+        return mu, log_var
 
     def raster(self, all_points, color=OPAQUE_BLACK, verbose=False, white_background=True):
         assert len(color) == 4
@@ -303,14 +303,12 @@ class VectorVAE(BaseVAE):
         del num_ctrl_pts, color
         return output
 
-    def decode(self, z: torch.Tensor, point_predictor=None, verbose=False) -> torch.Tensor:
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
         """
         Maps the given latent codes onto the image space.
         :param z: (Tensor) [B x D]
         :return: (Tensor) [B x C x H x W]
         """
-        if point_predictor is None:
-            point_predictor = self.point_predictor
         self.id = self.id.to(z.device)
 
         bs = z.shape[0]
@@ -337,27 +335,15 @@ class VectorVAE(BaseVAE):
             z = torch.cat([z_base, id], dim=-1)
 
         all_points = self.decoder_input(self.decode_transform(z))
-        for compute_block in point_predictor:
+        for compute_block in self.point_predictor:
             all_points = relu(all_points)
             # all_points = torch.cat([z_base_transform, all_points], dim=1)
             all_points = compute_block(all_points)
         all_points = self.decode_transform(torch.sigmoid(all_points / self.scale_factor))
         return all_points
 
-    def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
-        """
-        Reparameterization trick to sample from N(mu, var) from
-        N(0,1).
-        :param mu: (Tensor) Mean of the latent Gaussian [B x D]
-        :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
-        :return: (Tensor) [B x D]
-        """
-        if self.reparameterize_:
-            std = torch.exp(0.5 * logvar)
-            eps = torch.randn_like(std)
-            return eps * std + mu
-        else:
-            return mu
+    def reparameterize(self, mu: torch.Tensor, log_var: torch.Tensor) -> torch.Tensor:
+        return reparameterize(mu, log_var) if self.reparameterize_ else mu
 
     def forward(self, inp: torch.Tensor, **kwargs) -> List[torch.Tensor]:
         mu, log_var = self.encode(inp)

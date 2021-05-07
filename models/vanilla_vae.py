@@ -3,20 +3,7 @@ from typing import List
 import torch
 from torch.nn.functional import binary_cross_entropy, mse_loss
 
-from models import BaseVAE, interpolate_vectors
-
-
-def reparameterize(mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
-    """
-    Reparameterization trick to sample from N(mu, var) from
-    N(0,1).
-    :param mu: (Tensor) Mean of the latent Gaussian [B x D]
-    :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
-    :return: (Tensor) [B x D]
-    """
-    std = torch.exp(0.5 * logvar)
-    eps = torch.randn_like(std)
-    return eps * std + mu
+from models import BaseVAE, interpolate_vectors, reparameterize
 
 
 class VanillaVAE(BaseVAE):
@@ -130,7 +117,7 @@ class VanillaVAE(BaseVAE):
             ),
             torch.nn.Sigmoid())
 
-    def encode(self, inp: torch.Tensor) -> List[torch.Tensor]:
+    def encode(self, inp: torch.Tensor) -> (torch.Tensor, torch.Tensor):
         """
         Encodes the input by passing through the encoder network
         and returns the latent codes.
@@ -145,7 +132,7 @@ class VanillaVAE(BaseVAE):
         mu = self.fc_mu(result)
         log_var = self.fc_var(result)
 
-        return [mu, log_var]
+        return mu, log_var
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         """
@@ -165,9 +152,7 @@ class VanillaVAE(BaseVAE):
         z = reparameterize(mu, log_var)
         return [self.decode(z), inp, mu, log_var]
 
-    def loss_function(self,
-                      *args,
-                      **kwargs) -> dict:
+    def loss_function(self, *args, **kwargs) -> dict:
         """
         Computes the VAE loss function.
         KL(N(\\mu, \\sigma), N(0, 1)) = \\log \\frac{1}{\\sigma} + \\frac{\\sigma^2 + \\mu^2}{2} - \\frac{1}{2}
@@ -191,23 +176,15 @@ class VanillaVAE(BaseVAE):
         loss = recons_loss + self.beta * kld_weight * kld_loss
         return {'loss': loss, 'Reconstruction_Loss': recons_loss, 'KLD': -kld_loss}
 
-    def sample(self,
-               num_samples: int,
-               current_device: int, **kwargs) -> torch.Tensor:
+    def sample(self, num_samples: int, current_device: int, **kwargs) -> torch.Tensor:
         """
-        Samples from the latent space and return the corresponding
-        image space map.
+        Samples from the latent space and return the corresponding image space map.
         :param num_samples: (Int) Number of samples
         :param current_device: (Int) Device to run the model
         :return: (Tensor)
         """
-        z = torch.randn(num_samples,
-                        self.latent_dim)
-
-        z = z.to(current_device)
-
-        samples = self.decode(z)
-        return samples
+        z = torch.randn(num_samples, self.latent_dim).to(current_device)
+        return self.decode(z)
 
     def generate(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
         """
@@ -215,9 +192,7 @@ class VanillaVAE(BaseVAE):
         :param x: (Tensor) [B x C x H x W]
         :return: (Tensor) [B x C x H x W]
         """
-
         return self.forward(x)[0]
-        # .type(torch.FloatTensor).to(device)
 
     def interpolate(self, x: torch.Tensor) -> List[torch.Tensor]:
         mu, log_var = self.encode(x)

@@ -4,6 +4,6 @@ from .vector_vae import VectorVAE
 from .vector_vae_nlayers import VectorVAEnLayers
 
 
-vae_models = {'VanillaVAE': VanillaVAE,
+VAE_MODELS = {'VanillaVAE': VanillaVAE,
               'VectorVAE': VectorVAE,
               'VectorVAEnLayers': VectorVAEnLayers}
