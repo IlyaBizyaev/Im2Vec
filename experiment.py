@@ -94,7 +94,6 @@ class VAEExperiment(LightningModule):
         torch.cuda.empty_cache()
 
         lr = self.trainer.optimizers[0].param_groups[0]["lr"]
-        print('learning rate: ', lr)
 
         if training_step_outputs:
             avg_loss = torch.stack([x['loss'] for x in training_step_outputs]).mean()
