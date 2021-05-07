@@ -17,7 +17,6 @@ from utils import (
 
 
 config = request_and_read_config()
-torch.autograd.set_detect_anomaly(True)
 
 IGNORE_PATTERNS = ignore_patterns('*.pyc', '*.md', 'tmp*', 'logs*', 'data*', '.git*')
 

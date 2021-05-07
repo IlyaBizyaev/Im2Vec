@@ -247,7 +247,7 @@ class VectorVAE(BaseVAE):
         render_size = self.img_size_
         if verbose:
             render_size *= 2
-        all_points *= render_size
+        all_points = all_points * render_size
 
         num_ctrl_pts = torch.zeros(self.curves_, dtype=torch.int32).to(all_points.device) + 2
         color = make_tensor(color).to(all_points.device)
@@ -398,7 +398,7 @@ class VectorVAE(BaseVAE):
         if self.beta > 0:
             kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1), dim=0)\
                        * self.beta * kld_weight
-        recon_loss *= 10
+        recon_loss = recon_loss * 10
         loss = recon_loss + kld_loss + other_losses * self.other_losses_weight_
         logs = {
             'Reconstruction_Loss': recon_loss,

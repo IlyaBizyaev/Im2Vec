@@ -31,7 +31,7 @@ def soft_composite(layers, z_layers=None):
         sum_alpha += layers[i][:, 3:4, :, :] * z_layers[i]
     sum_alpha += inv_mask
 
-    inv_mask /= sum_alpha
+    inv_mask = inv_mask / sum_alpha
 
     rgb = layers[0][:, :3] * layers[0][:, 3:4, :, :] * z_layers[0] / sum_alpha
     for i in range(1, n):
@@ -220,7 +220,7 @@ class VectorVAEnLayers(VectorVAE):
         batch_size = all_points.shape[0]
         if verbose:
             render_size *= 2
-        all_points *= render_size
+        all_points = all_points * render_size
         num_ctrl_pts = torch.zeros(self.curves_, dtype=torch.int32) + 2
 
         for k in range(batch_size):
