@@ -29,7 +29,7 @@ def main():
     checkpoint = torch.load(load_weight)
     experiment.load_state_dict(checkpoint['state_dict'])
 
-    experiment.train_dataloader()  # To initialize the sample_dataloader
+    experiment.val_dataloader()
 
     experiment.eval()
     experiment.freeze()

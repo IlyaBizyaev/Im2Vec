@@ -8,8 +8,8 @@ import torch
 from torch.optim.lr_scheduler import ExponentialLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from torchvision.datasets import CelebA, ImageFolder, MNIST
-from torchvision.transforms import CenterCrop, Compose, Lambda, Resize, ToTensor
+from torchvision.datasets import ImageFolder
+from torchvision.transforms import CenterCrop, Compose, Resize, ToTensor
 from torchvision.utils import save_image
 
 from pytorch_lightning import LightningModule
@@ -19,7 +19,6 @@ from ranger import Ranger
 from models import BaseVAE
 
 
-# TODO: get rid of redundant 3rd dataloader
 class VAEExperiment(LightningModule):
 
     def __init__(self, vae_model: BaseVAE, params: dict) -> None:
@@ -32,10 +31,9 @@ class VAEExperiment(LightningModule):
         self.first_epoch = True
         self.beta_scale = 2.0  # 1.4
 
-        if 'retain_first_backpass' in self.params:
-            self.hold_graph = self.params['retain_first_backpass']
-        else:
-            self.hold_graph = False
+        self.num_train_imgs = None
+        self.val_dataloader_ = None
+        self.num_val_imgs = None
 
     def forward(self, inp: torch.Tensor, **kwargs) -> torch.Tensor:
         return self.model(inp, **kwargs)
@@ -104,7 +102,7 @@ class VAEExperiment(LightningModule):
 
     def sample_images_(self):
         # Get sample reconstruction image
-        test_input, test_label = next(iter(self.sample_dataloader))
+        test_input, test_label = next(iter(self.val_dataloader_))
         test_input = test_input.to(self.cur_device)
         recons = self.model.generate(test_input, labels=test_label)
 
@@ -117,7 +115,7 @@ class VAEExperiment(LightningModule):
         del test_input, recons
 
     def sample_interpolate(self, save_dir, name, version, save_svg=False, other_interpolations=False):
-        test_input, test_label = next(iter(self.sample_dataloader))
+        test_input, test_label = next(iter(self.val_dataloader_))
         test_input = test_input.to(self.cur_device)
 
         prefix = f"{save_dir}{name}/version_{version}/{name}"
@@ -194,34 +192,10 @@ class VAEExperiment(LightningModule):
     def train_dataloader(self) -> DataLoader:
         transform = self.data_transforms_()
 
-        if self.params['dataset'] == 'celeba':
-            dataset = CelebA(root=self.params['data_path'],
-                             split="train",
-                             transform=transform,
-                             download=False)
-        elif self.params['dataset'] == 'MNIST':
-            dataset = MNIST(root='./data', train=True, download=True, transform=transform)
-            self.sample_dataloader = DataLoader(dataset,
-                                                batch_size=64,
-                                                shuffle=False,
-                                                drop_last=True)
-            self.num_val_imgs = 200
-        else:
-            dataset = ImageFolder(self.params['data_path'], transform=transform)
+        train_dataset = ImageFolder(self.params['data_path'], transform=transform)
+        self.num_train_imgs = len(train_dataset)
 
-            test_dataset = self.params['data_path'].replace('train', 'test')
-            if os.path.exists(test_dataset):
-                test_dataset = ImageFolder(test_dataset, transform=transform)
-            else:
-                test_dataset = dataset
-            self.sample_dataloader = DataLoader(test_dataset,
-                                                batch_size=self.params['val_batch_size'],
-                                                shuffle=self.params['val_shuffle'],
-                                                drop_last=True, num_workers=1)
-            self.num_val_imgs = len(self.sample_dataloader)
-
-        self.num_train_imgs = len(dataset)
-        return DataLoader(dataset,
+        return DataLoader(train_dataset,
                           batch_size=self.params['batch_size'],
                           shuffle=True,
                           drop_last=False, num_workers=1)
@@ -229,38 +203,23 @@ class VAEExperiment(LightningModule):
     def val_dataloader(self):
         transform = self.data_transforms_()
 
-        if self.params['dataset'] == 'celeba':
-            dataset = CelebA(root=self.params['data_path'], split="test", transform=transform, download=False)
-            dataloader = DataLoader(
-                dataset,
-                batch_size=144,
-                shuffle=True,
-                drop_last=True
-            )
-            self.num_val_imgs = len(dataloader)
-        else:
-            dataset = ImageFolder(self.params['data_path'], transform=transform)
-            dataloader = DataLoader(dataset,
-                                    batch_size=64,
-                                    shuffle=False,
-                                    drop_last=False)
-            self.num_val_imgs = 200  # len(dataloader)
+        val_dataset_path = self.params['data_path'].replace('train', 'test')
+        if not os.path.exists(val_dataset_path):
+            val_dataset_path = self.params['data_path']
+
+        val_dataset = ImageFolder(val_dataset_path, transform=transform)
+        self.num_val_imgs = len(val_dataset)
+        dataloader = DataLoader(val_dataset,
+                                batch_size=self.params['val_batch_size'],
+                                shuffle=self.params['val_shuffle'],
+                                drop_last=False)
+        self.val_dataloader_ = dataloader
 
         return dataloader
 
     def data_transforms_(self):
-        set_range = Lambda(lambda x: (2 * x - 1.))
-
-        if self.params['dataset'] == 'celeba':
-            transform = Compose([
-                CenterCrop(148),
-                Resize(self.params['img_size']),
-                ToTensor(),
-                set_range])
-        else:
-            transform = Compose([
-                Resize(self.params['img_size']),
-                CenterCrop(self.params['img_size']),
-                ToTensor(),
-            ])
-        return transform
+        return Compose([
+            Resize(self.params['img_size']),
+            CenterCrop(self.params['img_size']),
+            ToTensor(),
+        ])
