@@ -12,7 +12,6 @@ model_params:
   memory_leak_training: False
 
 exp_params:
-  dataset: irrelavant
   data_path: "./data/emoji/"
   img_size: 128
   batch_size: 1 # Better to have a square number

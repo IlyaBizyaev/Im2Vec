@@ -13,7 +13,6 @@ model_params:
   other_losses_weight: 1
 
 exp_params:
-  dataset: irrelavant
   data_path: "./data/emoji/"
   img_size: 128
   batch_size: 4 # Better to have a square number
