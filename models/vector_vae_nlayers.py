@@ -6,7 +6,6 @@ import torch
 import pydiffvg
 
 from models import VectorVAE, interpolate_vectors, raster_verbose, HIGH, LOW
-from utils import make_tensor
 
 
 # TODO: this hardcodes colors for the emoji dataset!!
@@ -245,7 +244,7 @@ class VectorVAEnLayers(VectorVAE):
                     shapes.append(shape)
                     shape_groups.append(group)
             else:
-                color = make_tensor(COLORS[k])
+                color = torch.tensor(COLORS[k])
 
                 shapes = [pydiffvg.Path(num_control_points=num_ctrl_pts, points=points, is_closed=True)]
                 shape_groups = [

@@ -15,7 +15,6 @@ import kornia
 import pydiffvg
 
 from models import BaseVAE, interpolate_vectors, reparameterize
-from utils import make_tensor
 
 
 OPAQUE_BLACK = (0, 0, 0, 1)
@@ -250,7 +249,7 @@ class VectorVAE(BaseVAE):
         all_points = all_points * render_size
 
         num_ctrl_pts = torch.zeros(self.curves_, dtype=torch.int32).to(all_points.device) + 2
-        color = make_tensor(color).to(all_points.device)
+        color = torch.tensor(color).to(all_points.device)
         batch_size = all_points.shape[0]
         outputs = []
         for k in range(batch_size):
@@ -375,11 +374,11 @@ class VectorVAE(BaseVAE):
                 keys = self.latent_lossvpath_.keys()
                 for i in range(num_latents):
                     if np.array2string(latents[i]) in keys:
-                        pair = make_tensor([self.curves_, recon_loss_non_reduced_cpu[i, 0], ])[None, :].to(mu.device)
+                        pair = torch.tensor([self.curves_, recon_loss_non_reduced_cpu[i, 0], ])[None, :].to(mu.device)
                         self.latent_lossvpath_[np.array2string(latents[i])] \
                             = torch.cat([self.latent_lossvpath_[np.array2string(latents[i])], pair], dim=0)
                     else:
-                        self.latent_lossvpath_[np.array2string(latents[i])] = make_tensor(
+                        self.latent_lossvpath_[np.array2string(latents[i])] = torch.tensor(
                             [[self.curves_, recon_loss_non_reduced_cpu[i, 0]], ]).to(mu.device)
                 num = torch.ones_like(spacing[:, 0]) * self.curves_
                 est_loss = spacing[:, 2] + 1 / torch.exp(num * spacing[:, 0] - spacing[:, 1])

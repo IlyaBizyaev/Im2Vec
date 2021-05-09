@@ -55,9 +55,3 @@ def make_model_save_path(config, tt_logger=None):
         config['logging_params']['name'],
         version
     )
-
-
-def make_tensor(x, grad=False):
-    x = torch.tensor(x, dtype=torch.float32)
-    x.requires_grad = grad
-    return x
