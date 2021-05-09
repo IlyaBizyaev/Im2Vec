@@ -211,7 +211,7 @@ class VAEExperiment(LightningModule):
         self.num_val_imgs = len(val_dataset)
         dataloader = DataLoader(val_dataset,
                                 batch_size=self.params['val_batch_size'],
-                                shuffle=self.params['val_shuffle'],
+                                shuffle=False,
                                 drop_last=False)
         self.val_dataloader_ = dataloader
 
