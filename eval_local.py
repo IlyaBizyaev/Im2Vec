@@ -1,8 +1,13 @@
-import os
+import torch
 
 from experiment import VAEExperiment
-from models import *
-from utils import enable_reproducibility, request_and_read_config, get_last_weight_path
+from models import make_model
+from utils import (
+    enable_reproducibility,
+    get_last_weight_path,
+    make_model_save_path,
+    request_and_read_config
+)
 
 
 config = request_and_read_config()
@@ -11,21 +16,20 @@ enable_reproducibility(config)
 
 
 def main():
-    model_save_path = os.getcwd()
-    parent = '/'.join(model_save_path.split('/')[:-3])
-    config['logging_params']['save_dir'] = os.path.join(parent, config['logging_params']['save_dir'])
-    config['exp_params']['data_path'] = os.path.join(parent, config['exp_params']['data_path'])
-    print(parent, config['exp_params']['data_path'])
-
     model = make_model(config)
-    experiment = VAEExperiment(model, config['exp_params'])
 
+    model_save_path = make_model_save_path(config)
     load_weight = get_last_weight_path(model_save_path)
     print('loading: ', load_weight)
 
+    # Alternatively: experiment = VAEExperiment.load_from_checkpoint(
+    #     load_weight, vae_model=model, params=config['exp_params']
+    # )
+    experiment = VAEExperiment(model, config['exp_params'])
     checkpoint = torch.load(load_weight)
     experiment.load_state_dict(checkpoint['state_dict'])
-    _ = experiment.train_dataloader()
+
+    experiment.train_dataloader()  # To initialize the sample_dataloader
 
     experiment.eval()
     experiment.freeze()

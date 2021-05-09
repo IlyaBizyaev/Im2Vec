@@ -48,6 +48,15 @@ def make_test_tube_logger(config):
     )
 
 
+def make_model_save_path(config, tt_logger=None):
+    version = 'best' if tt_logger is None else tt_logger.version
+    return '{}/{}/version_{}'.format(
+        config['logging_params']['save_dir'],
+        config['logging_params']['name'],
+        version
+    )
+
+
 def make_tensor(x, grad=False):
     x = torch.tensor(x, dtype=torch.float32)
     x.requires_grad = grad

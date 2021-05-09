@@ -12,6 +12,7 @@ from utils import (
     enable_reproducibility,
     get_last_weight_path,
     request_and_read_config,
+    make_model_save_path,
     make_test_tube_logger
 )
 
@@ -25,12 +26,7 @@ def main():
     root_dir = os.getcwd()
     resume = False
     tt_logger = make_test_tube_logger(config)
-    model_save_path = '{}/{}/version_{}/'.format(
-        config['logging_params']['save_dir'],
-        config['logging_params']['name'],
-        tt_logger.version
-    )
-    print(model_save_path)
+    model_save_path = make_model_save_path(tt_logger)
     # Copying the folder
     if os.path.exists(model_save_path):
         if config['model_params']['only_auxiliary_training'] or config['model_params']['memory_leak_training']:
