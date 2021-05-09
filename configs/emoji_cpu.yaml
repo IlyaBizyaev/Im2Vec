@@ -9,7 +9,6 @@ model_params:
   scale_factor: 1
   learn_sampling: False
   only_auxiliary_training: False
-  memory_leak_training: False
   other_losses_weight: 1
 
 exp_params:

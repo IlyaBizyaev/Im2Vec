@@ -23,13 +23,11 @@ class VanillaVAE(BaseVAE):
         print('Beta:', beta, 'loss_fn:', loss_fn)
         self.beta = beta
         self.only_auxiliary_training = kwargs['only_auxiliary_training']
-        self.memory_leak_training = kwargs['memory_leak_training']
 
         if loss_fn == 'BCE':
             self.loss_fn_ = binary_cross_entropy
         else:
             self.loss_fn_ = mse_loss
-        self.memory_leak_epochs = kwargs.get('memory_leak_epochs', 105)
 
         if hidden_dims is None:
             hidden_dims = [32, 64, 128, 256, 512]

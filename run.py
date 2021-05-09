@@ -29,7 +29,7 @@ def main():
     model_save_path = make_model_save_path(config, tt_logger)
     # Copying the folder
     if os.path.exists(model_save_path):
-        if config['model_params']['only_auxiliary_training'] or config['model_params']['memory_leak_training']:
+        if config['model_params']['only_auxiliary_training']:
             print('Training Auxiliary Network or Memory Leak')
         elif click.confirm('Folder exists, override?', default=True):
             rmtree(model_save_path)
@@ -46,7 +46,7 @@ def main():
     experiment = VAEExperiment(model, config['exp_params'])
 
     model_path = None
-    if config['model_params']['only_auxiliary_training'] or config['model_params']['memory_leak_training'] or resume:
+    if config['model_params']['only_auxiliary_training'] or resume:
         model_path = get_last_weight_path(model_save_path)
         print('loading: ', model_path)
         if config['model_params']['only_auxiliary_training']:

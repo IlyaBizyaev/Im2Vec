@@ -116,8 +116,6 @@ class VectorVAE(BaseVAE):
 
         self.beta = kwargs['beta']
         self.only_auxiliary_training = kwargs['only_auxiliary_training']
-        self.memory_leak_training = kwargs['memory_leak_training']
-        self.memory_leak_epochs = kwargs.get('memory_leak_epochs', 105)
 
         if loss_fn == 'BCE':
             self.loss_fn_ = binary_cross_entropy_with_logits

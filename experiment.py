@@ -28,7 +28,6 @@ class VAEExperiment(LightningModule):
         self.params = params
 
         self.cur_device = None
-        self.first_epoch = True
         self.beta_scale = 2.0  # 1.4
 
         self.num_train_imgs = None
@@ -81,11 +80,6 @@ class VAEExperiment(LightningModule):
     def training_epoch_end(self, training_step_outputs):
         super(VAEExperiment, self).training_epoch_end(training_step_outputs)
         self.sample_images_()
-        if (self.current_epoch + 1) % self.model.memory_leak_epochs == 0 \
-                and self.model.memory_leak_training \
-                and not self.first_epoch:
-            quit()
-        self.first_epoch = False
         print('beta: ', self.model.beta)
         if self.current_epoch % 25 == 0:
             self.model.beta = min(self.model.beta * self.beta_scale, 4)
@@ -174,7 +168,7 @@ class VAEExperiment(LightningModule):
             optimizers[0], 'min', verbose=True,
             factor=self.params['scheduler_gamma'],
             min_lr=0.0001,
-            patience=int(self.model.memory_leak_epochs / 7)
+            patience=15
         )
         schedulers = [{
             'scheduler': scheduler,
