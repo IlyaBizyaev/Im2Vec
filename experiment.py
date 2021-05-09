@@ -41,10 +41,10 @@ class VAEExperiment(LightningModule):
         real_img, labels = batch
         self.cur_device_ = real_img.device
         results = self.forward(real_img, labels=labels)
-        train_loss = self.model_.loss_function(*results,
-                                               M_N=self.params['batch_size'] / self.num_train_imgs_,
-                                               optimizer_idx=optimizer_idx,
-                                               batch_idx=batch_idx)['loss']
+        loss_and_logs = self.model_.loss_function(*results,
+                                                  M_N=self.params['batch_size'] / self.num_train_imgs_,
+                                                  optimizer_idx=optimizer_idx,
+                                                  batch_idx=batch_idx)
 
         if self.model_.only_auxiliary_training:
             path = self.current_epoch + 6
@@ -56,8 +56,9 @@ class VAEExperiment(LightningModule):
         if self.params['grow']:
             self.model_.redo_features(path)
 
-        self.log('loss', train_loss)
-        return train_loss
+        self.log('loss', loss_and_logs['loss'])
+        self.log_dict(loss_and_logs['progress_bar'], prog_bar=True)
+        return loss_and_logs['loss']
 
     def validation_step(self, batch, batch_idx, optimizer_idx=0):
         real_img, labels = batch
@@ -158,11 +159,6 @@ class VAEExperiment(LightningModule):
                            lr=self.params['LR'],
                            weight_decay=self.params['weight_decay'])
         optimizers = [optimizer]
-        # Check if more than 1 optimizer is required (Used for adversarial training)
-        if 'LR_2' in self.params:
-            optimizer2 = AdamP(getattr(self.model_, self.params['submodel']).parameters(),
-                               lr=self.params['LR_2'])
-            optimizers.append(optimizer2)
 
         scheduler = ReduceLROnPlateau(
             optimizers[0], 'min', verbose=True,
@@ -176,6 +172,14 @@ class VAEExperiment(LightningModule):
             'interval': 'epoch',
             'frequency': 1,
         }]
+
+        # TODO: is this useful?
+        # Check if more than 1 optimizer is required (Used for adversarial training)
+        if 'LR_2' in self.params:
+            optimizer2 = AdamP(getattr(self.model_, self.params['submodel']).parameters(),
+                               lr=self.params['LR_2'])
+            optimizers.append(optimizer2)
+
         # Check if another scheduler is required for the second optimizer
         if 'scheduler_gamma_2' in self.params:
             scheduler2 = ExponentialLR(optimizers[1], gamma=self.params['scheduler_gamma_2'])
@@ -192,7 +196,7 @@ class VAEExperiment(LightningModule):
         return DataLoader(train_dataset,
                           batch_size=self.params['batch_size'],
                           shuffle=True,
-                          drop_last=False, num_workers=1)
+                          drop_last=False)
 
     def val_dataloader(self):
         transform = self.data_transforms_()

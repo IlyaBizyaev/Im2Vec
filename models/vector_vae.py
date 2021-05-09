@@ -352,8 +352,6 @@ class VectorVAE(BaseVAE):
         recons, inp, mu, log_var = args[:4]
         recons = recons[:, :3, :, :]
         other_losses = args[4] if len(args) == 5 else 0
-        aux_loss = 0
-        kld_loss = 0
         kld_weight = kwargs['M_N']  # Account for the minibatch samples from the dataset
 
         if not self.only_auxiliary_training or self.save_lossvspath:
@@ -387,21 +385,21 @@ class VectorVAE(BaseVAE):
                     pair = self.latent_lossvpath_[np.array2string(latents[i])]
                     est_loss = spacing[i, 2] + 1 / torch.exp(pair[:, 0] * spacing[i, 0] - spacing[i, 1])
                     aux_loss += torch.abs(pair[:, 0] * (est_loss - pair[:, 1])).mean()
-            logs = {'Reconstruction_Loss': recon_loss.mean(), 'KLD': 0, 'aux_loss': aux_loss}
+            logs = {'Reconstruction_Loss': recon_loss.mean(), 'aux_loss': aux_loss}
 
             return {'loss': aux_loss, 'progress_bar': logs}
 
         recon_loss = recon_loss.mean()
+        kld_loss = 0
         if self.beta > 0:
             kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1), dim=0)\
                        * self.beta * kld_weight
         recon_loss = recon_loss * 10
         loss = recon_loss + kld_loss + other_losses * self.other_losses_weight_
         logs = {
-            'Reconstruction_Loss': recon_loss,
+            'Reconstruction_Loss': recon_loss.detach(),
             'KLD': -kld_loss,
-            'aux_loss': aux_loss,
-            'other losses': other_losses * self.other_losses_weight_
+            'other losses': other_losses.detach() * self.other_losses_weight_
         }
 
         return {'loss': loss, 'progress_bar': logs}
