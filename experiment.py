@@ -24,65 +24,65 @@ class VAEExperiment(LightningModule):
     def __init__(self, vae_model: BaseVAE, params: dict) -> None:
         super(VAEExperiment, self).__init__()
 
-        self.model = vae_model
+        self.model_ = vae_model
         self.params = params
 
-        self.cur_device = None
-        self.beta_scale = 2.0  # 1.4
+        self.cur_device_ = None
+        self.beta_scale_ = 2.0  # 1.4
 
-        self.num_train_imgs = None
+        self.num_train_imgs_ = None
         self.val_dataloader_ = None
-        self.num_val_imgs = None
+        self.num_val_imgs_ = None
 
     def forward(self, inp: torch.Tensor, **kwargs) -> torch.Tensor:
-        return self.model(inp, **kwargs)
+        return self.model_(inp, **kwargs)
 
     def training_step(self, batch, batch_idx, optimizer_idx=0):
         real_img, labels = batch
-        self.cur_device = real_img.device
+        self.cur_device_ = real_img.device
         results = self.forward(real_img, labels=labels)
-        train_loss = self.model.loss_function(*results,
-                                              M_N=self.params['batch_size'] / self.num_train_imgs,
-                                              optimizer_idx=optimizer_idx,
-                                              batch_idx=batch_idx)['loss']
+        train_loss = self.model_.loss_function(*results,
+                                               M_N=self.params['batch_size'] / self.num_train_imgs_,
+                                               optimizer_idx=optimizer_idx,
+                                               batch_idx=batch_idx)['loss']
 
-        if self.model.only_auxiliary_training:
+        if self.model_.only_auxiliary_training:
             path = self.current_epoch + 6
             if path > 30:
                 path = random.randint(7, 25)
-                self.model.save_lossvspath = False
+                self.model_.save_lossvspath = False
         else:
             path = random.randint(7, 25)
         if self.params['grow']:
-            self.model.redo_features(path)
+            self.model_.redo_features(path)
 
         self.log('loss', train_loss)
         return train_loss
 
     def validation_step(self, batch, batch_idx, optimizer_idx=0):
         real_img, labels = batch
-        self.cur_device = real_img.device
+        self.cur_device_ = real_img.device
 
         results = self.forward(real_img, labels=labels)
-        loss = self.model.loss_function(*results,
-                                        M_N=self.params['batch_size'] / self.num_val_imgs,
-                                        optimizer_idx=optimizer_idx,
-                                        batch_idx=batch_idx)['loss']
+        loss = self.model_.loss_function(*results,
+                                         M_N=self.params['batch_size'] / self.num_val_imgs_,
+                                         optimizer_idx=optimizer_idx,
+                                         batch_idx=batch_idx)['loss']
         self.log('val_loss', loss)
         return loss
 
     def on_load_checkpoint(self, checkpoint):
         load_epoch = checkpoint['epoch']
-        new_beta = self.model.beta * (self.beta_scale ** (load_epoch // 25))
-        self.model.beta = min(new_beta, 4)
-        print('loaded beta: ', self.model.beta)
+        new_beta = self.model_.beta * (self.beta_scale_ ** (load_epoch // 25))
+        self.model_.beta = min(new_beta, 4)
+        print('loaded beta: ', self.model_.beta)
 
     def training_epoch_end(self, training_step_outputs):
         super(VAEExperiment, self).training_epoch_end(training_step_outputs)
         self.sample_images_()
-        print('beta: ', self.model.beta)
+        print('beta: ', self.model_.beta)
         if self.current_epoch % 25 == 0:
-            self.model.beta = min(self.model.beta * self.beta_scale, 4)
+            self.model_.beta = min(self.model_.beta * self.beta_scale_, 4)
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -97,8 +97,8 @@ class VAEExperiment(LightningModule):
     def sample_images_(self):
         # Get sample reconstruction image
         test_input, test_label = next(iter(self.val_dataloader_))
-        test_input = test_input.to(self.cur_device)
-        recons = self.model.generate(test_input, labels=test_label)
+        test_input = test_input.to(self.cur_device_)
+        recons = self.model_.generate(test_input, labels=test_label)
 
         prefix = f"{self.logger.save_dir}{self.logger.name}/version_{self.logger.version}/"
         suffix = f"{self.logger.name}_{self.current_epoch:04d}.png"
@@ -110,7 +110,7 @@ class VAEExperiment(LightningModule):
 
     def sample_interpolate(self, save_dir, name, version, save_svg=False, other_interpolations=False):
         test_input, test_label = next(iter(self.val_dataloader_))
-        test_input = test_input.to(self.cur_device)
+        test_input = test_input.to(self.cur_device_)
 
         prefix = f"{save_dir}{name}/version_{version}/{name}"
 
@@ -126,7 +126,7 @@ class VAEExperiment(LightningModule):
             ]
 
         for method_name, nrow in methods:
-            method = getattr(self.model, method_name)
+            method = getattr(self.model_, method_name)
             for verbose in [False, True]:
                 suffix = "vector" if verbose else "image"
 
@@ -138,29 +138,29 @@ class VAEExperiment(LightningModule):
                            nrow=nrow)
 
         if other_interpolations:
-            sampling_graph = self.model.sampling_error(test_input)
+            sampling_graph = self.model_.sampling_error(test_input)
             plt.imsave(f"{prefix}_recons_graph.png", sampling_graph)
-            if self.model.only_auxiliary_training:
-                graph = self.model.visualize_aux_error(test_input, verbose=True)
+            if self.model_.only_auxiliary_training:
+                graph = self.model_.visualize_aux_error(test_input, verbose=True)
                 plt.imsave(f"{prefix}_aux_graph.png", graph)
 
-        recons = self.model.generate(test_input, labels=test_label)
+        recons = self.model_.generate(test_input, labels=test_label)
         save_image(recons.cpu().data, f"{prefix}_recons.png", normalize=False, nrow=10)
         save_image(test_input.cpu().data, f"{prefix}_input.png", normalize=False, nrow=10)
         if save_svg:
-            self.model.save(test_input, save_dir, name)
+            self.model_.save(test_input, save_dir, name)
 
     def configure_optimizers(self):
-        if self.model.only_auxiliary_training:
+        if self.model_.only_auxiliary_training:
             print('Learning Rate changed for auxiliary training')
             self.params['LR'] = 0.00001
-        optimizer = Ranger(self.model.parameters(),
+        optimizer = Ranger(self.model_.parameters(),
                            lr=self.params['LR'],
                            weight_decay=self.params['weight_decay'])
         optimizers = [optimizer]
         # Check if more than 1 optimizer is required (Used for adversarial training)
         if 'LR_2' in self.params:
-            optimizer2 = AdamP(getattr(self.model, self.params['submodel']).parameters(),
+            optimizer2 = AdamP(getattr(self.model_, self.params['submodel']).parameters(),
                                lr=self.params['LR_2'])
             optimizers.append(optimizer2)
 
@@ -187,7 +187,7 @@ class VAEExperiment(LightningModule):
         transform = self.data_transforms_()
 
         train_dataset = ImageFolder(self.params['data_path'], transform=transform)
-        self.num_train_imgs = len(train_dataset)
+        self.num_train_imgs_ = len(train_dataset)
 
         return DataLoader(train_dataset,
                           batch_size=self.params['batch_size'],
@@ -202,7 +202,7 @@ class VAEExperiment(LightningModule):
             val_dataset_path = self.params['data_path']
 
         val_dataset = ImageFolder(val_dataset_path, transform=transform)
-        self.num_val_imgs = len(val_dataset)
+        self.num_val_imgs_ = len(val_dataset)
         dataloader = DataLoader(val_dataset,
                                 batch_size=self.params['val_batch_size'],
                                 shuffle=False,
