@@ -26,7 +26,7 @@ def main():
     root_dir = os.getcwd()
     resume = False
     tt_logger = make_test_tube_logger(config)
-    model_save_path = make_model_save_path(tt_logger)
+    model_save_path = make_model_save_path(config, tt_logger)
     # Copying the folder
     if os.path.exists(model_save_path):
         if config['model_params']['only_auxiliary_training'] or config['model_params']['memory_leak_training']:
